@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "description": "",
   "main": "./dist/player.js",
-  "files": ["dist/*"]
+  "files": ["dist/*"],
   "scripts": {
     "format": "prettier --write \"src/**/*.ts\"",
     "build": "npm run format && esbuild src/player.ts --target=es2019 --bundle --minify --outfile=./dist/player.js",
