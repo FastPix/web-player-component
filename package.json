@@ -1,11 +1,12 @@
 {
   "name": "@fastpix/player",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "./dist/player.js",
+  "files": ["dist/*"]
   "scripts": {
     "format": "prettier --write \"src/**/*.ts\"",
-    "build": "npm run format && esbuild src/player.ts --target=es2019 --bundle --outfile=./dist/player.js",
+    "build": "npm run format && esbuild src/player.ts --target=es2019 --bundle --minify --outfile=./dist/player.js",
     "format:css": "prettier --write \"src/utils/innerHtml.ts\""
 
   },
