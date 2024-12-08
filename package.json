@@ -1,0 +1,21 @@
+{
+  "name": "@fastpix/player",
+  "version": "1.0.0",
+  "description": "",
+  "main": "./dist/player.js",
+  "scripts": {
+    "format": "prettier --write \"src/**/*.ts\"",
+    "build": "npm run format && esbuild src/player.ts --target=es2019 --bundle --outfile=./dist/player.js",
+    "format:css": "prettier --write \"src/utils/innerHtml.ts\""
+
+  },
+  "keywords": [],
+  "author": "",
+  "dependencies": {
+    "hls.js": "^1.5.15"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "prettier": "^3.3.3"
+  }
+}
