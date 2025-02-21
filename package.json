@@ -1,0 +1,34 @@
+{
+  "name": "@fastpix/fp-player",
+  "version": "1.0.0",
+  "description": "FastPix Player SDK is a customizable video player for on-demand and live streaming.",
+  "main": "./dist/player.js",
+  "scripts": {
+    "format": "prettier --write \"src/**/*.ts\"",
+    "build": "npm run format && esbuild src/player.ts --target=es2019 --bundle --minify --outfile=./dist/player.js",
+    "format:css": "prettier --write \"src/utils/innerHtml.ts\""
+  },
+  "keywords": [
+    "FastPix Player",
+    "HTML5 Video Player",
+    "HLS Video Player",
+    "Adaptive Streaming",
+    "Customizable Video Player",
+    "Live Streaming Player",
+    "VOD Player",
+    "Live Streaming Player",
+    "Video Playback SDK",
+    "Low-Latency Streaming",
+    "M3U8 Player"
+  ],
+  "author": "FastPix, Inc",
+  "license": "MIT",
+  "dependencies": {
+    "@fastpix/video-data-core": "^1.0.0",
+    "hls.js": "^1.5.15"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "prettier": "^3.3.3"
+  }
+}
