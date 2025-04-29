@@ -128,6 +128,10 @@ const extractAttributes = (context: Context): ExtractedData => {
     "metadata-custom-8": "custom_8",
     "metadata-custom-9": "custom_9",
     "metadata-custom-10": "custom_10",
+    "metadata-browser-name": "browser_name",
+    "metadata-os-name": "os_name",
+    "metadata-os-version": "os_version",
+    "metadata-player-init-time": "player_init_time",
   };
 
   const trackingData: ExtractedData = {};
@@ -157,10 +161,12 @@ export function initializeAnalytics(
   const debug = context.hasAttribute("enable-debug");
   const disableCookies = context.hasAttribute("disable-cookies");
   const respectDoNotTrack = context.hasAttribute("respect-do-not-track");
-  const DisabledDataMonitoring = context.hasAttribute("disable-data-monitoring");
+  const disabledDataMonitoring = context.hasAttribute(
+    "disable-data-monitoring"
+  );
   const hasWorkspaceKey = context.hasAttribute("metadata-workspace-key");
 
-  if (!DisabledDataMonitoring || !hasWorkspaceKey) {
+  if (!disabledDataMonitoring || !hasWorkspaceKey) {
     fastpixMetrix.tracker(video, {
       debug,
       hlsjs: hls,

@@ -17,6 +17,7 @@ import {
 } from "./ToggleController";
 import { PauseIcon, PlayIcon } from "../icons/PlayPauseIcon/index";
 import { hideMenus } from "./DomVisibilityManager";
+import { syncVolumeWithChromecast } from "./CastHandler";
 
 function subtileButtonClickHandler(context: any) {
   context.ccButton.addEventListener("click", () => {
@@ -138,6 +139,8 @@ function VolumeButtonClickHandler(context: any) {
       context.video.volume = 0; // Set video volume to 0 when muting
     }
 
+    console.log("sravani", context.video.muted, context.video.volume);
+
     // Update UI
     updateVolumeControlBackground(context);
     updateVolumeButtonIcon(context);
@@ -150,6 +153,7 @@ function VolumeButtonClickHandler(context: any) {
       localStorage.removeItem("savedVolume");
       localStorage.removeItem("savedVolumeIcon");
     }
+    syncVolumeWithChromecast(context.video.volume, context.video.muted);
     hideMenus(context);
   });
 }

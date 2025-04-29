@@ -55,6 +55,7 @@ function initializeSubtitles(
     tracksArray[0].mode = "showing";
     tracksArray[0].default = true;
     context.currentSubtitleTrackIndex = 0;
+    localStorage.setItem("subtitleLang", tracksArray[0].language);
   }
 }
 
@@ -78,6 +79,8 @@ function disableAllSubtitles(context: Context): void {
     context.subtitleContainer.innerHTML = "";
     context.subtitleContainer.classList.remove("contained");
   }
+
+  localStorage.removeItem("subtitleLang");
 }
 
 function changeSubtitleTrack(context: Context, trackIndex: number): void {
@@ -91,6 +94,18 @@ function changeSubtitleTrack(context: Context, trackIndex: number): void {
       context.currentSubtitleTrackIndex = trackIndex;
     } else {
       track.mode = "disabled";
+    }
+  }
+}
+
+function restoreSubtitleFromStorage(context: Context) {
+  const savedLang = localStorage.getItem("subtitleLang");
+  const tracks = Array.from(context.video.textTracks);
+
+  if (savedLang) {
+    const indexToShow = tracks.findIndex((t: any) => t.language === savedLang);
+    if (indexToShow !== -1) {
+      changeSubtitleTrack(context, indexToShow);
     }
   }
 }

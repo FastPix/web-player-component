@@ -1,5 +1,6 @@
 import { updateChapterMarkers } from "./ChaptersHandlers";
 import { resizeVideoWidth } from "./ResizeVideo";
+import { resumePlaybackOnLoadOnActiveSession } from "./VideoListeners";
 
 interface VideoPlayerContext {
   video: HTMLVideoElement;
@@ -22,6 +23,7 @@ function WindowEvents(context: VideoPlayerContext) {
   window.addEventListener("load", () => {
     resizeVideoWidth(context);
     updateChapterMarkers(context);
+    resumePlaybackOnLoadOnActiveSession(context);
   });
 
   window.addEventListener("DOMContentLoaded", () => {

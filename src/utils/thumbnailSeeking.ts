@@ -68,7 +68,7 @@ async function fetchThumbnailJson(
   context.spritesheetCache ??= {};
 
   try {
-    let spritesheetUrl = `${spritesheetSrc}/${playbackId}/spritesheet.json`;
+    let spritesheetUrl = `${spritesheetSrc}/${playbackId}/storyboard.json`;
 
     const token = context.getAttribute("token");
     if (token) {
@@ -102,7 +102,7 @@ function setupThumbnailElements(context: any): void {
 
 function setupTimeDisplay(context: any): void {
   const timeDisplay =
-    context.thumbnail.querySelector(".thumbnailTimeDisplay") ||
+    context.thumbnail.querySelector(".thumbnailTimeDisplay") ??
     documentObject.createElement("div");
   if (!timeDisplay.classList.contains("thumbnailTimeDisplay")) {
     timeDisplay.className = "thumbnailTimeDisplay";
@@ -113,7 +113,7 @@ function setupTimeDisplay(context: any): void {
 
 function setupThumbnailArrow(context: any): void {
   const thumbnailArrow =
-    context.thumbnail.querySelector(".thumbnailSeekingArrow") ||
+    context.thumbnail.querySelector(".thumbnailSeekingArrow") ??
     documentObject.createElement("div");
   if (!thumbnailArrow.classList.contains("thumbnailSeekingArrow")) {
     thumbnailArrow.className = "thumbnailSeekingArrow";
@@ -123,7 +123,7 @@ function setupThumbnailArrow(context: any): void {
 
 function setupSeekbarPin(context: any): void {
   const seekbarPin =
-    context.controlsContainer.querySelector(".seekbarPin") ||
+    context.controlsContainer.querySelector(".seekbarPin") ??
     documentObject.createElement("div");
   if (!seekbarPin.classList.contains("seekbarPin")) {
     seekbarPin.className = "seekbarPin";
@@ -193,7 +193,7 @@ function updateChapterDisplay(context: any, currentTime: number): void {
   let displayChapter = "";
   for (const chapter of context.chapters) {
     if (currentTime >= chapter.startTime && currentTime <= chapter.endTime) {
-      displayChapter = chapter.value || "";
+      displayChapter = chapter.value ?? "";
       if (context.currentChapter !== chapter) {
         context.currentChapter = chapter;
       }
@@ -348,11 +348,32 @@ async function thumbnailSeeking(
   playbackId: string | null,
   spritesheetSrc: string
 ): Promise<void> {
-  const thumbnailJson = await fetchThumbnailJson(
-    context,
-    playbackId,
-    spritesheetSrc
-  );
+  // Check cache in sessionStorage first
+  const cacheKey = `spritesheetUrl-${playbackId}`;
+  let cachedUrl = sessionStorage.getItem(cacheKey);
+  let thumbnailJson;
+
+  if (cachedUrl) {
+    // Use cached URL
+    let cachedSrc = { url: cachedUrl };
+    // Fetch fresh
+    thumbnailJson = await fetchThumbnailJson(
+      context,
+      playbackId,
+      cachedSrc.url
+    );
+  } else {
+    // Fetch fresh
+    thumbnailJson = await fetchThumbnailJson(
+      context,
+      playbackId,
+      spritesheetSrc
+    );
+    if (thumbnailJson?.url) {
+      sessionStorage.setItem(cacheKey, spritesheetSrc);
+    }
+  }
+
   const thumbnailUrl = thumbnailJson?.url ?? null;
 
   if (thumbnailUrl === null) {

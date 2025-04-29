@@ -9,6 +9,7 @@ import {
   toggleResolutionMenu,
 } from "./ToggleController.js";
 import { documentObject } from "./CustomElements.js";
+import { isChromecastConnected } from "./CastHandler.js";
 
 const configHls: Partial<Hls.HlsConfig> = {
   maxMaxBufferLength: 30,
@@ -31,7 +32,6 @@ const configHls: Partial<Hls.HlsConfig> = {
 };
 
 const hlsInstance: Hls | null = null;
-let url: string | null;
 
 function setupErrorHandling(context: any, streamType: string | null) {
   let networkErrorLogged = false;
@@ -61,6 +61,7 @@ function setupErrorHandling(context: any, streamType: string | null) {
 
   const handleOffline = () => {
     console.error("Device is offline. Unable to load content.");
+    if (isChromecastConnected()) return;
     showError(
       context,
       "You are currently offline. Please connect to a network to continue watching."

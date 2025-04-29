@@ -1,4 +1,5 @@
 import { VolumeHighIcon, VolumeMutedIcon } from "../icons/VolumeIcon/index";
+import { isChromecastConnected } from "./CastHandler";
 
 function removeUnusedControlsForMiniDevices(context: any) {
   if (window.innerWidth > 768) return; // Exit if not a mini device
@@ -127,7 +128,17 @@ function updateVolumeUIDuringResize(context: any) {
   }
 }
 
+function freezeLocalVideoDuringCasting(context: any): void {
+  if (isChromecastConnected()) {
+    const video = context.video;
+    if (!video.paused) {
+      video.pause();
+    }
+  }
+}
+
 function resizeVideoWidth(context: any) {
+  freezeLocalVideoDuringCasting(context);
   const video = context.video;
   const videoWidth = video.offsetWidth;
   const videoHeight = video.offsetHeight;

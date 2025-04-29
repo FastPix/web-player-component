@@ -18,6 +18,7 @@ export const skeleton: string = `
     --primary-color: #F5F5F5;
     --secondary-color: #000;
     --thumbnail-max-width: 150px;
+    --cast-button-display: flex;
     aspect-ratio: 16 / 9;
     display: block; /* Ensure the custom element is a block-level element */
     font-family: Arial, sans-serif;
@@ -36,6 +37,14 @@ video {
     overflow: hidden;
     background-color: #000; /* Fallback color */
 }
+
+google-cast-launcher {
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  color: #fff;
+}
+
   
 .video-overlay {
     position: absolute;
@@ -149,7 +158,9 @@ video::-webkit-media-text-track-display {
 }
 
 .leftControls.mobile.initialized {
-    display: var(--left-controls-bottom-mobile, flex)
+    display: var(--left-controls-bottom-mobile, flex);
+    bottom: 3px;
+    position: absolute;
 }
 
 .bottomRightContainer.mobile.initialized {
@@ -164,11 +175,16 @@ video::-webkit-media-text-track-display {
     display: var(--volume-iOS-button, flex)
 }
 
+.castButton {
+    display: var(--cast-button-display);
+} 
+
 #decreaseTimeBtn,
 #increaseTimeBtn,
 .timeDisplay,
 .parentVolumeDiv,
-.initialplayPauseButtonStyle {
+.initialplayPauseButtonStyle,
+.castButton {
     border-radius: var(--border-radius);
 }
 
@@ -199,7 +215,8 @@ video::-webkit-media-text-track-display {
 }
 
 .playbackRateButtonInitial:hover,
-.audioMenuButton:hover {
+.audioMenuButton:hover,
+.castButton:hover {
     background-color: var(--accent-color); /* Color on hover */
     border-radius: 2px;
 }
@@ -1154,8 +1171,7 @@ width: 30px;
 .leftControls.mobile {
     display: none;
     position: absolute;
-    left: 10px;
-    bottom: 3px;
+    left: 10px;"load    bottom: 3px;
     flex-direction: row;
     align-items: center;
     z-index: 4;
@@ -1213,7 +1229,8 @@ display: none;
 .mobileControlsButtonsBlock #increaseTimeBtn,
 .mobileControlsButtonsBlock #decreaseTimeBtn,
 .mobileControlsButtonsBlock #increaseTimeBtn svg,
-.mobileControlsButtonsBlock #decreaseTimeBtn svg {
+.mobileControlsButtonsBlock #decreaseTimeBtn svg,
+.castButton svg {
     width: 30px !important;
     height: 30px !important;
 }
@@ -1238,6 +1255,7 @@ display: none;
 .resolutionMenuButton svg,
 #audioMenuButton svg,
 .default-icon,
+.castButton svg,
 .volumeiOSButton {
      width: var(--icon-width);
      height: var(--icon-height);
@@ -1254,6 +1272,7 @@ display: none;
 .volumeButton,
 .resolutionMenuButton,
 .audioMenuButton,
+.castButton,
 .default-button {
     width: var(--button-width);
     height: var(--button-height);

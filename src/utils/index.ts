@@ -1,3 +1,8 @@
+import {
+  isChromecastConnected,
+  lastPlaybackTimeCasting,
+  seekInChromecast,
+} from "./CastHandler";
 import { updateControlsVisibility } from "./DomVisibilityManager";
 import { showError } from "./ErrorElement";
 import { initializeHLS } from "./HlsManager";
@@ -89,6 +94,8 @@ const videoEvents: string[] = [
   "encrypted",
   "waitingforkey",
 ];
+
+let globalSource: string | null = null;
 
 function handleFieldError(context: Context, errorFields: any[]): void {
   if (errorFields && Array.isArray(errorFields)) {
@@ -214,7 +221,7 @@ const fetchAndHandleStream = async (
 ): Promise<string | null> => {
   const response = await fetchStream(context, url);
 
-  if (response.status === 200 && response.playlist) {
+  if (response.status === 200) {
     context._src = url;
     return url;
   }
@@ -228,6 +235,16 @@ const fetchAndHandleStream = async (
   return null;
 };
 
+function getCurrentTime(context: any) {
+  return context.video.currentTime;
+}
+
+function getSyncedCurrentTime(context: any) {
+  return isChromecastConnected()
+    ? lastPlaybackTimeCasting()
+    : getCurrentTime(context);
+}
+
 async function fetchStream(context: Context, url: string) {
   if (context.cache.has(url)) {
     return {
@@ -239,66 +256,64 @@ async function fetchStream(context: Context, url: string) {
 
   try {
     const response = await fetch(url);
-    const contentType: string | null = response.headers.get("Content-Type");
+    const contentType = response.headers.get("Content-Type") ?? "";
     const responseText = await response.text();
 
-    if (contentType?.includes("application/json")) {
-      let parsedResponse;
+    if (contentType.includes("application/json")) {
       try {
-        parsedResponse = JSON.parse(responseText);
-      } catch (e) {
-        console.warn("Failed to parse response as JSON:", e);
-        return {
-          status: response.status,
-          errorFields: null,
-          errorMessage: null,
-        };
-      }
+        const parsedResponse = JSON.parse(responseText);
+        if (parsedResponse?.success) {
+          context._src = url;
+          return {
+            status: response.status,
+            errorFields: null,
+            errorMessage: null,
+          };
+        }
 
-      if (parsedResponse?.success) {
-        context._src = url;
-        return {
-          status: response.status,
-          errorFields: null,
-          errorMessage: null,
-        };
-      }
+        const errorMessage =
+          parsedResponse?.error?.message ?? "Unknown error occurred.";
+        const errorFields = parsedResponse?.error?.fields ?? null;
 
-      let errorMessage =
-        parsedResponse?.error?.message || "Unknown error occurred.";
-      let errorFields = parsedResponse?.error?.fields || null;
-      if (response.status === 401 && url.toString().includes("token")) {
-        showError(
-          context,
-          "Invalid playback URL. Please check the playback URL or verify if the token is invalid."
-        );
-      }
+        if (response.status === 401 && url.includes("token")) {
+          showError(
+            context,
+            "Invalid playback URL. Please check the playback URL or verify if the token is invalid."
+          );
+        }
 
-      // Return status, errorFields, and errorMessage
-      return { status: response.status, errorFields, errorMessage };
-    } else if (
-      contentType?.includes("application/vnd.apple.mpegurl") ||
-      contentType?.includes("text/plain")
+        return { status: response.status, errorFields, errorMessage };
+      } catch (jsonError) {
+        console.warn("Failed to parse response as JSON:", jsonError);
+      }
+    }
+
+    if (
+      contentType.includes("application/vnd.apple.mpegurl") ||
+      contentType.includes("text/plain")
     ) {
-      // Handle M3U8 playlist response
       return {
         status: response.status,
         playlist: responseText,
         errorMessage: null,
-      }; // Return the M3U8 playlist text
+      };
     }
 
-    return { status: response.status, errorFields: null, errorMessage: null }; // Handle other statuses
+    return {
+      status: response.status,
+      errorFields: null,
+      errorMessage: "Unexpected content type.",
+    };
   } catch (error) {
+    console.error("Network request failed:", error);
     showError(
       context,
       "Network Error. Please check your internet connection and try refreshing the page."
     );
-    return { status: null, errorFields: null, errorMessage: "Network Error" }; // Return null for network error
+    return { status: null, errorFields: null, errorMessage: "Network Error" };
   }
 }
 
-// Main function to fetch stream
 const fetchStreamWithToken = async (
   context: Context,
   playbackId: string | null,
@@ -334,6 +349,23 @@ const fetchStreamWithToken = async (
     return null;
   }
 };
+
+function isChromeBrowser(): boolean {
+  const userAgent = navigator.userAgent;
+
+  const isChrome = /Chrome/.exec(userAgent) || /CriOS/.exec(userAgent);
+  const isEdge = /Edg/.exec(userAgent);
+  const isOpera = /OPR|Opera/.exec(userAgent);
+
+  return !!window.chrome && !!isChrome && !isEdge && !isOpera;
+}
+
+function isIOS(context: any): boolean {
+  const isiOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  context.isiOS = isiOS; // Storing the result in context for future reference
+  return isiOS; // Returning the result
+}
 
 // Wrapper functions for live and on-demand streams
 const fetchStreamWithTokenOnDemand = (
@@ -398,8 +430,14 @@ async function setStreamUrl(
     return null;
   }
 
+  globalSource = streamUrl;
+
   initializeStream(context, streamUrl, streamType);
   return streamUrl;
+}
+
+function getSRC() {
+  return globalSource;
 }
 
 function initializeStream(
@@ -415,7 +453,6 @@ function initializeStream(
     initializeHLS(context, streamUrl, streamType);
   }
 }
-
 function formatVideoDuration(seconds: number) {
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
@@ -450,6 +487,7 @@ function smoothTransitionToControls(context: Context, isVisible: boolean) {
     "playbackRateDiv",
     "liveStreamDisplay",
     "subtitleMenu",
+    "castButton",
   ];
 
   const opacityValue = isVisible ? "1" : "0";
@@ -465,11 +503,16 @@ function smoothTransitionToControls(context: Context, isVisible: boolean) {
 }
 
 function adjustCurrentTimeBy(context: any, change: number) {
-  const newTime = Math.min(
-    Math.max(context.video.currentTime + change, 0),
-    context.video.duration
-  );
-  context.video.currentTime = newTime;
+  if (isChromecastConnected()) {
+    seekInChromecast(change); // Seek in Chromecast if connected
+  } else {
+    // Local player seek
+    const newTime = Math.min(
+      Math.max(context.video.currentTime + change, 0),
+      context.video.duration
+    );
+    context.video.currentTime = newTime;
+  }
 }
 
 function getFormattedDuration(
@@ -485,7 +528,12 @@ function getFormattedDuration(
 }
 
 function updateTimeDisplay(context: any): void {
-  const currentTime = Math.floor(context.video.currentTime);
+  let currentTime;
+  if (isChromecastConnected()) {
+    currentTime = Math.floor(lastPlaybackTimeCasting());
+  } else {
+    currentTime = Math.floor(context.video.currentTime);
+  }
   const duration = Math.floor(context.video.duration);
   const showRemainingTime =
     context.getAttribute("default-show-remaining-time") !== null;
@@ -521,12 +569,9 @@ function receiveAttributes(context: any) {
   context.disableVideoClickAttr = context.hasAttribute("disable-video-click");
   context.enableCacheBusting = context.hasAttribute("enable-cache-busting");
   context.controlsContainerValue = updateControlsVisibility(context);
-
   context.hideControlAttr = context.hasAttribute("hide-controls");
 
   updateControlsVisibility(context);
-
-  // Access the underlying <video> element
 
   context.token = context.getAttribute("token");
 
@@ -550,10 +595,9 @@ function receiveAttributes(context: any) {
     parseFloat(context.thumbnailTime);
   context.posterAttribute = context.getAttribute("poster");
   context.placeholderAttribute = context.getAttribute("placeholder");
-  context.thumbnailUrlAttribute = context.getAttribute("thumbnail-url");
-  context.thumbnailUrlFinal = context.thumbnailUrlAttribute
-    ? context.thumbnailUrlAttribute
-    : `https://images.fastpix.io`;
+  context.thumbnailUrlAttribute = context.getAttribute("spritesheet-src");
+  const baseUrl = context?.thumbnailUrlAttribute ?? "images.fastpix.io";
+  context.thumbnailUrlFinal = `https://${baseUrl}`;
 
   // playbackrates
   context.playbackRatesAttribute = context.getAttribute("playback-rates");
@@ -600,4 +644,8 @@ export {
   updateTimeDisplay,
   adjustCurrentTimeBy,
   receiveAttributes,
+  isChromeBrowser,
+  isIOS,
+  getSyncedCurrentTime,
+  getSRC,
 };

@@ -141,7 +141,7 @@ To get started with the FastPix Player SDK we need some prerequisites, follow th
 To get started with the SDK, first install the FastPix Player SDK for Web, you can use npm or your favourite node package manager 😉:
 
 ```shell
-npm install @fastpix/fp-player
+npm install @fastpix/player
 ```
 
 # Basic Usage:
@@ -286,27 +286,33 @@ To honor users' privacy preferences regarding the 'Do Not Track' setting, set th
 
 | **Context Attribute**                | **Extracted Data Attribute**  | **Description**                                                                 |
 |--------------------------------------|-------------------------------|---------------------------------------------------------------------------------|
-| `metadata-workspace-key`              | `workspace_id`                | Unique identifier for the workspace.                                            |
+| `metadata-workspace-id`              | `workspace_id`                | Unique identifier for the workspace.                                            |
 | `metadata-video-title`               | `video_title`                 | Title of the video being played.                                                |
 | `metadata-viewer-user-id`            | `viewer_id`                   | Identifier for the viewer watching the video.                                   |
-| `metadata-video-id`                  | `video_id`                    | Unique ID of the video.                                                         |
-| `metadata-experiment-name`           | `experiment_name`             | Name of any ongoing experiment related to the video.                            |
-| `metadata-player-name`               | `player_name`                 | Name of the video player being used.                                            |
-| `metadata-player-version`            | `player_version`              | Version of the video player.                                                    |
-| `metadata-video-duration`            | `video_duration`              | Duration of the video in seconds.                                               |
-| `metadata-view-session-id`           | `view_session_id`             | Session ID for the video viewing.                                               |
-| `metadata-page-context`              | `page_context`                | Context of the page where the video is embedded.                                |
-| `metadata-sub-property-id`           | `sub_property_id`             | ID for any specific sub-property of the video.                                  |
-| `metadata-video-content-type`        | `video_content_type`          | Type of video content (e.g., live or on-demand).                                |
-| `metadata-video-drm-type`            | `video_drm_type`              | Type of DRM (Digital Rights Management) used for the video.                     |
-| `metadata-video-encoding-variant`    | `video_encoding_variant`      | Encoding variant of the video, like resolution or bitrate.                      |
-| `metadata-video-language-code`       | `video_language_code`         | Language code of the video's audio (e.g., "en" for English).                     |
-| `metadata-video-producer`            | `video_producer`              | Producer or creator of the video content.                                       |
-| `metadata-video-variant-name`        | `video_variant_name`          | Name of the specific video variant (e.g., resolution).                          |
-| `metadata-video-cdn`                 | `video_cdn`                   | CDN used to deliver the video content.                                          |
-| `metadata-video-variant-id`          | `video_variant_id`            | Unique ID for the video variant.                                                |
-| `metadata-video-series`              | `video_series`                | Series name or ID if the video is part of a series.                             |
-| `metadata-custom-1` to `metadata-custom-10` | `custom_1` to `custom_10` | Custom metadata attributes for additional information.                           |
+| `metadata-video-id`                 | `video_id`                    | Unique ID of the video.                                                         |
+| `metadata-experiment-name`          | `experiment_name`             | Name of any ongoing experiment related to the video.                            |
+| `metadata-player-name`              | `player_name`                 | Name of the video player being used.                                            |
+| `metadata-player-version`           | `player_version`              | Version of the video player.                                                    |
+| `metadata-video-duration`           | `video_duration`              | Duration of the video in seconds.                                               |
+| `metadata-view-session-id`          | `view_session_id`             | Session ID for the video viewing.                                               |
+| `metadata-page-context`             | `page_context`                | Context of the page where the video is embedded.                               |
+| `metadata-sub-property-id`          | `sub_property_id`             | ID for any specific sub-property of the video.                                  |
+| `metadata-video-content-type`       | `video_content_type`          | Type of video content (e.g., live or on-demand).                               |
+| `metadata-video-drm-type`           | `video_drm_type`              | Type of DRM (Digital Rights Management) used for the video.                    |
+| `metadata-video-encoding-variant`   | `video_encoding_variant`      | Encoding variant of the video, like resolution or bitrate.                     |
+| `metadata-video-language-code`      | `video_language_code`         | Language code of the video's audio (e.g., "en" for English).                    |
+| `metadata-video-producer`           | `video_producer`              | Producer or creator of the video content.                                       |
+| `metadata-video-variant-name`       | `video_variant_name`          | Name of the specific video variant (e.g., resolution).                          |
+| `metadata-video-cdn`                | `video_cdn`                   | CDN used to deliver the video content.                                          |
+| `metadata-cdn`                       | `cdn`                         | Content Delivery Network used in the video delivery.                            |
+| `metadata-video-variant-id`         | `video_variant_id`            | Unique ID for the video variant.                                               |
+| `metadata-video-series`             | `video_series`                | Series name or ID if the video is part of a series.                             |
+| `metadata-custom-1` to `metadata-custom-10` | `custom_1` to `custom_10` | Custom metadata attributes for additional information.                         |
+| `metadata-browser-name`             | `browser_name`                | Name of the browser used to watch the video.                                    |
+| `metadata-os-name`                  | `os_name`                     | Operating system used to view the video (e.g., Windows, macOS).                 |
+| `metadata-os-version`               | `os_version`                  | Version of the operating system.                                               |
+| `metadata-player-init-time`         | `player_init_time`            | Time taken to initialize the video player.                                      |
+| `stream-type`                        | `video_stream_type`           | Type of stream (e.g., live or VOD).                                            |
 
 ### Explanation of Attributes
 
@@ -335,7 +341,7 @@ To utilize the experimental cache-busting feature, include the `enable-cache-bus
 ```
 **Note**: This feature is currently in beta and may be deprecated in future releases.
 
-For comprehensive documentation and advanced usage, visit the (FastPix Player Documentation)[https://docs.fastpix.io/docs/overview-and-features].
+For comprehensive documentation and advanced usage, visit the FastPix Player Documentation[https://docs.fastpix.io/docs/overview-and-features].
 
 Enhance your web applications with FastPix Player's seamless streaming and extensive customization options.
 

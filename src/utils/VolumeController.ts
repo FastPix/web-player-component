@@ -3,6 +3,7 @@ import {
   volumeMediumIcon,
   VolumeMutedIcon,
 } from "../icons/VolumeIcon/index";
+import { isChromecastConnected, syncVolumeWithChromecast } from "./CastHandler";
 import {
   hideAllControls,
   hideMenus,
@@ -10,7 +11,7 @@ import {
 } from "./DomVisibilityManager";
 
 function updateVolumeControlBackground(context: any) {
-  context.primaryColor = context.getAttribute("primary-color") || "#F5F5F5";
+  context.primaryColor = context.getAttribute("primary-color") ?? "#F5F5F5";
   const volume: any = context.volumeControl.value;
   const gradient = `linear-gradient(to right, ${context.primaryColor} 0%, ${
     context.primaryColor
@@ -57,40 +58,39 @@ function updateVolumeButtonIcon(context: any) {
 function configureForiOS(context: any) {
   context.isiOS =
     /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-  if (context.isiOS) {
-    context.video.setAttribute("playsinline", "");
-    context.video.removeAttribute("controls");
-    showAllControls(context);
-    context.fullScreenButton.addEventListener("click", () => {
-      if (context.video.webkitDisplayingFullscreen) {
-        context.video.setAttribute("controls", "true");
-        hideAllControls(context);
-      } else {
-        context.video.removeAttribute("controls");
-        showAllControls(context);
-      }
 
-      // Enter or exit full screen
-      if (context.video.webkitEnterFullscreen) {
-        context.video.webkitEnterFullscreen();
-      }
-    });
-
-    const noVolumePrefAttribute = context.hasAttribute("no-volume-pref");
-    const savedVolume = localStorage.getItem("savedVolume");
-
-    // Sync iOS mute state with saved volume from localStorage
-    if (savedVolume === "0") {
-      context.video.muted = true;
-      updateVolumeButtonIconiOS(context);
+  context.video.setAttribute("playsinline", "");
+  context.video.removeAttribute("controls");
+  showAllControls(context);
+  context.fullScreenButton.addEventListener("click", () => {
+    if (context.video.webkitDisplayingFullscreen) {
+      context.video.setAttribute("controls", "true");
+      hideAllControls(context);
+    } else {
+      context.video.removeAttribute("controls");
+      showAllControls(context);
     }
 
-    // Set event listener for iOS volume button
-    context.volumeiOSButton.addEventListener("click", () => {
-      toggleMuteUnmute(context, noVolumePrefAttribute);
-      hideMenus(context);
-    });
+    // Enter or exit full screen
+    if (context.video.webkitEnterFullscreen) {
+      context.video.webkitEnterFullscreen();
+    }
+  });
+
+  const noVolumePrefAttribute = context.hasAttribute("no-volume-pref");
+  const savedVolume = localStorage.getItem("savedVolume");
+
+  // Sync iOS mute state with saved volume from localStorage
+  if (savedVolume === "0") {
+    context.video.muted = true;
+    updateVolumeButtonIconiOS(context);
   }
+
+  // Set event listener for iOS volume button
+  context.volumeiOSButton.addEventListener("click", () => {
+    toggleMuteUnmute(context, noVolumePrefAttribute);
+    hideMenus(context);
+  });
 }
 
 // Adjust volume
@@ -121,6 +121,10 @@ function adjustVolume(
     localStorage.removeItem("savedVolumeIcon");
     localStorage.removeItem("savedVolume");
   }
+
+  if (isChromecastConnected()) {
+    syncVolumeWithChromecast(context.video.volume, context.video.muted); // ✅ Sync mute state
+  }
 }
 
 function saveVolumeToLocalStorage(context: any) {
@@ -140,7 +144,7 @@ function restoreVolumeSettings(context: any) {
   const savedVolume: any = localStorage.getItem("savedVolume");
 
   if (savedVolume !== null) {
-    context.primaryColor = context.getAttribute("primary-color") || "#F5F5F5";
+    context.primaryColor = context.getAttribute("primary-color") ?? "#F5F5F5";
     context.video.volume = parseFloat(savedVolume);
     context.volumeControl.value = savedVolume;
     const gradient = `linear-gradient(to right, ${context.primaryColor} 0%, ${
@@ -164,7 +168,7 @@ function toggleMuteUnmute(context: any, noVolumePrefAttribute: boolean) {
   const savedVolume = localStorage.getItem("savedVolume");
 
   // Check if the volume is 0 or the video is muted
-  if (context.video.muted || savedVolume === "0") {
+  if (context.video.muted ?? savedVolume === "0") {
     // If video is muted or volume is 0 in localStorage, unmute and set volume to 1
     context.video.muted = false;
     context.volumeButton.innerHTML = VolumeMutedIcon;

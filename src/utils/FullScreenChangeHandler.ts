@@ -4,9 +4,9 @@ import { resizeVideoWidth } from "./ResizeVideo";
 function handleFullScreenChange(context: any) {
   const video = context.wrapper.querySelector("video");
   const fullscreenElement =
-    (document as any).fullscreenElement ||
-    (document as any).webkitFullscreenElement ||
-    (document as any).mozFullScreenElement ||
+    (document as any).fullscreenElement ??
+    (document as any).webkitFullscreenElement ??
+    (document as any).mozFullScreenElement ??
     (document as any).msFullscreenElement;
 
   if (fullscreenElement && fullscreenElement === video) {

@@ -16,6 +16,10 @@ function hideAllControls(context: any) {
     context.playbackRateButton.style.opacity = "0";
   }
 
+  if (context.castButton) {
+    context.castButton.style.opacity = "0";
+  }
+
   if (context.playbackRateDiv) {
     context.playbackRateDiv.style.opacity = "0";
   }
@@ -51,7 +55,7 @@ function showInitialControls(
   context: any,
   videoWidth: number,
   playbackId: string | null,
-  thumbnailUrlFinal: string,
+  thumbnailUrlFinal: string | null,
   streamType: string | null
 ) {
   // Check if the mobile control buttons block should be displayed
@@ -69,7 +73,7 @@ function showInitialControls(
 
   // Handle specific stream types
   if (streamType === "on-demand") {
-    thumbnailSeeking(context, playbackId, thumbnailUrlFinal);
+    thumbnailSeeking(context, playbackId, thumbnailUrlFinal ?? "");
   }
 
   showInitControls(context);

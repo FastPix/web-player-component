@@ -1,10 +1,17 @@
 import { Hls } from "./HlsManager";
-import { toggleVideoPlayback } from "./ToggleController";
+import {
+  initializeControlsAfterPlayClick,
+  toggleVideoPlayback,
+} from "./ToggleController";
 
 import { PauseIcon, PlayIcon } from "../icons/PlayPauseIcon/index";
 import { activeChapter, ensureChaptersLoaded } from "./ChaptersHandlers";
 import { hideLoader, hideMenus, showLoader } from "./DomVisibilityManager";
-import { adjustCurrentTimeBy, updateTimeDisplay } from "./index";
+import {
+  adjustCurrentTimeBy,
+  isChromeBrowser,
+  updateTimeDisplay,
+} from "./index";
 import { resizeVideoWidth } from "./ResizeVideo";
 import {
   disableAllSubtitles,
@@ -16,11 +23,22 @@ import {
   updateVolumeButtonIconiOS,
   updateVolumeControlBackground,
 } from "./VolumeController";
+import {
+  controlCastMedia,
+  getCurrentTime,
+  isChromecastConnected,
+  onVolumeChangeDuringCasting,
+  seekChromecastProgressbar,
+  syncVolumeWithChromecast,
+} from "./CastHandler";
 
 // connectedCallback
 const videoListeners = (context: any) => {
   if (context) {
     context.video.addEventListener("loadedmetadata", () => {
+      if (!isChromeBrowser()) {
+        context.bottomRightDiv.removeChild(context.castButton);
+      }
       preloadSubtitles(context);
       const tracksArray = Array.from(context.video.textTracks);
 
@@ -38,27 +56,44 @@ const videoListeners = (context: any) => {
     });
 
     context.video.addEventListener("volumechange", () => {
-      context.isiOS =
-        /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-        !(window as any).MSStream;
-
       context.volumeControl.value = context.video.volume;
 
-      if (context.video.muted) {
+      const volume = context.video.volume;
+      const isMuted = context.video.muted;
+
+      if (isMuted) {
         context.video.volume = 0;
         context.volumeControl.value = "0";
       }
+
       updateVolumeButtonIcon(context);
       updateVolumeControlBackground(context);
       updateVolumeButtonIconiOS(context);
+      localStorage.setItem("media-volume", String(context.video.volume));
+      syncVolumeWithChromecast(volume, isMuted); // ✅ Ensure mute is also synced
+
+      // Sync volume with Chromecast if connected
+      if (isChromecastConnected()) {
+        onVolumeChangeDuringCasting(volume);
+      }
     });
 
     context.video.addEventListener("pause", () => {
-      context.playPauseButton.innerHTML = PlayIcon;
+      if (isChromecastConnected()) {
+        controlCastMedia("pause", context);
+      } else {
+        context.playPauseButton.innerHTML = PlayIcon;
+        context.wasManuallyPaused = true;
+      }
     });
 
     context.video.addEventListener("play", () => {
-      context.playPauseButton.innerHTML = PauseIcon;
+      if (isChromecastConnected()) {
+        controlCastMedia("play", context);
+      } else {
+        context.playPauseButton.innerHTML = PauseIcon;
+        context.wasManuallyPaused = false;
+      }
     });
 
     context.video.addEventListener("waiting", () => {
@@ -72,6 +107,8 @@ const videoListeners = (context: any) => {
       if (!context.isBuffering) {
         hideLoader(context);
       }
+
+      hideLoader(context);
 
       context.playPauseButton.disabled = false;
 
@@ -137,7 +174,7 @@ const videoListeners = (context: any) => {
     });
 
     context.video.addEventListener("timeupdate", () => {
-      const currentTime = context.video.currentTime;
+      let currentTime = getCurrentTime(context);
       const duration = context.video.duration;
       const bufferEnd =
         context.video.buffered.length > 0
@@ -159,17 +196,17 @@ const videoListeners = (context: any) => {
     });
 
     context.video.addEventListener("seeked", () => {
+      let currentTime = getCurrentTime(context);
+      const duration = context.video.duration;
       const bufferEnd =
         context.video.buffered.length > 0
           ? context.video.buffered.end(context.video.buffered.length - 1)
           : 0;
-      const bufferedPercentage = (bufferEnd / context.video.duration) * 100;
-      const seekedPercentage = Math.min(
-        (context.video.currentTime / context.video.duration) * 100,
+      const bufferedPercentage = (bufferEnd / duration) * 100;
+      const seekedPercentage = Math.min((currentTime / duration) * 100, 100);
 
-        100
-      );
       context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) 100%)`;
+
       context.progressBar.style.setProperty(
         "--progressBar-thumb-position",
         `${seekedPercentage}%`
@@ -177,13 +214,14 @@ const videoListeners = (context: any) => {
     });
 
     context.video.addEventListener("progress", () => {
+      let currentTime = getCurrentTime(context);
       const bufferEnd =
         context.video.buffered.length > 0
           ? context.video.buffered.end(context.video.buffered.length - 1)
           : 0;
       const bufferedPercentage = (bufferEnd / context.video.duration) * 100;
       const seekedPercentage = Math.min(
-        (context.video.currentTime / context.video.duration) * 100,
+        (currentTime / context.video.duration) * 100,
         100
       );
       context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) 100%)`;
@@ -269,35 +307,34 @@ const videoListeners = (context: any) => {
       updateVolumeButtonIcon(context);
     }
 
-    context.progressBar.addEventListener("input", () => {
-      const duration = context.video.duration;
-
-      if (!isFinite(duration)) {
-        console.error("Video duration is not finite, cannot seek.");
-        return;
-      }
-
-      const seekTime = (context.progressBar.value / 100) * duration;
-      const seekedPercentage = Math.min((seekTime / duration) * 100, 100);
-      const bufferEnd =
-        context.video.buffered.length > 0
-          ? context.video.buffered.end(context.video.buffered.length - 1)
-          : 0;
-      const bufferedPercentage = (bufferEnd / duration) * 100;
-
+    function updateProgressBarBackground(
+      context: any,
+      seekedPercentage: number,
+      bufferedPercentage: number
+    ) {
       context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) 100%)`;
       context.progressBar.style.setProperty(
         "--progressBar-thumb-position",
         `${seekedPercentage}%`
       );
+    }
 
+    function handleChromecastSeek(seekTime: number) {
+      if (isChromecastConnected()) {
+        seekChromecastProgressbar(seekTime);
+      }
+    }
+
+    function handleLocalVideoSeek(
+      context: any,
+      seekTime: number,
+      bufferEnd: number
+    ) {
       if (isFinite(seekTime)) {
-        // Show loader if seeking outside the buffered range
         if (seekTime > bufferEnd) {
           showLoader(context);
         }
 
-        // Trigger buffer flushing for smooth transition if seeking within the buffer
         if (seekTime < bufferEnd) {
           context.hls.trigger(Hls.Events.BUFFER_FLUSHING, {
             startOffset: seekTime,
@@ -309,31 +346,65 @@ const videoListeners = (context: any) => {
       } else {
         console.error("Seek time is not finite, skipping currentTime update.");
       }
+    }
 
-      // Manage playback state properly
+    function handlePlaybackAfterSeek(context: any) {
       if (context.video.paused && !context.userPaused) {
-        // If the video was paused by the user, do not play
         context.video.pause();
       } else if (!context.video.paused) {
         context.video.play().catch((error: any) => {
           console.error("Playback error after seeking:", error);
         });
       }
+    }
 
-      // Hide loader after the seek if buffered
+    function hideLoaderIfNeeded(
+      seekTime: number,
+      bufferEnd: number,
+      context: any
+    ) {
       if (seekTime <= bufferEnd) {
         hideLoader(context);
       }
+    }
 
+    context.progressBar.addEventListener("input", () => {
+      const duration = context.video.duration;
+      if (!isFinite(duration)) {
+        console.error("Video duration is not finite, cannot seek.");
+        return;
+      }
+
+      const seekedPercentage = context.progressBar.value;
+      const seekTime = (seekedPercentage / 100) * duration;
+      const bufferEnd =
+        context.video.buffered.length > 0
+          ? context.video.buffered.end(context.video.buffered.length - 1)
+          : 0;
+      const bufferedPercentage = (bufferEnd / duration) * 100;
+
+      // Update progress bar background
+      updateProgressBarBackground(
+        context,
+        seekedPercentage,
+        bufferedPercentage
+      );
+
+      // Handle Chromecast and local video seek logic
+      handleChromecastSeek(seekTime);
+      if (!isChromecastConnected()) {
+        handleLocalVideoSeek(context, seekTime, bufferEnd);
+        handlePlaybackAfterSeek(context);
+        hideLoaderIfNeeded(seekTime, bufferEnd, context);
+      }
+
+      // Hide menus and active chapter
       hideMenus(context);
-
       activeChapter(context);
     });
 
-    // Volume control input onChange
-    // Listen for volume control input changes
     context.volumeControl.addEventListener("input", () => {
-      const primaryColor = context.getAttribute("primary-color") || "#F5F5F5";
+      const primaryColor = context.getAttribute("primary-color") ?? "#F5F5F5";
       const volume = context.volumeControl.value;
       const gradient = `linear-gradient(to right, ${primaryColor} 0%, ${primaryColor} ${(
         volume * 100
@@ -364,6 +435,8 @@ const videoListeners = (context: any) => {
       context.volumeControl.value = volume;
       updateVolumeControlBackground(context);
       updateVolumeButtonIcon(context);
+
+      syncVolumeWithChromecast(volume, context.video.muted);
 
       if (!noVolumePrefAttribute) {
         localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
@@ -418,4 +491,39 @@ const videoListeners = (context: any) => {
   }
 };
 
-export { videoListeners };
+function hideControlsShowLoader(context: any) {
+  showLoader(context);
+  context.controlsContainer.style.setProperty("--controls", "none");
+}
+
+function resumePlaybackOnLoadOnActiveSession(context: any) {
+  if (localStorage.getItem("chromecastActive") === "true") {
+    context.initialPlayClick = true;
+    showLoader(context);
+    context.controlsContainer.style.setProperty(
+      "--initial-play-button",
+      "none"
+    );
+
+    setTimeout(() => {
+      initializeControlsAfterPlayClick(context);
+
+      const pausedFlag = localStorage.getItem("pausedOnCasting") === "true";
+      context.pausedOnCasting = pausedFlag;
+
+      if (context.pausedOnCasting) {
+        controlCastMedia("pause", context);
+      } else {
+        controlCastMedia("play", context);
+      }
+
+      hideLoader(context);
+    }, 1200);
+  }
+}
+
+export {
+  videoListeners,
+  resumePlaybackOnLoadOnActiveSession,
+  hideControlsShowLoader,
+};

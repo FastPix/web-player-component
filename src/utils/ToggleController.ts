@@ -9,6 +9,8 @@ import {
   showInitialControls,
   showLoader,
 } from "./DomVisibilityManager";
+import { getCastContext, isChromecastConnected } from "./CastHandler";
+import { isIOS } from "./index";
 
 interface Track {
   mode: string;
@@ -119,12 +121,7 @@ function togglePlaybackRateButtons(context: any) {
   }
 }
 
-function toggleVideoPlayback(
-  context: any,
-  playbackId: string | null,
-  thumbnailUrlFinal: string | null,
-  streamType: string | null
-): void {
+function initializeControlsAfterPlayClick(context: any) {
   context.wrapper.classList.add("initialized");
   context.playPauseButton.classList.add("initialized");
   context.bottomRightDiv.classList.add("initialized");
@@ -132,7 +129,77 @@ function toggleVideoPlayback(
   context.leftControls.classList.add("initialized");
   context.progressBar.classList.add("initialized");
   context.parentVolumeDiv.classList.add("initialized");
+}
 
+function getRemotePlaybackInstance(context: any) {
+  if (!(window as any)?.cast?.framework?.RemotePlayer) {
+    console.warn("Cast SDK not available yet.");
+    return { remotePlayer: null, remotePlayerController: null };
+  }
+
+  const remotePlayer = new (window as any).cast.framework.RemotePlayer();
+  const remotePlayerController = new (
+    window as any
+  ).cast.framework.RemotePlayerController(remotePlayer);
+  return { remotePlayer, remotePlayerController };
+}
+
+// Handle Play/Pause logic for Chromecast
+function toggleRemotePlayback(context: any) {
+  let { remotePlayer, remotePlayerController } =
+    getRemotePlaybackInstance(context);
+
+  if (
+    remotePlayer?.playerState === "PAUSED" &&
+    remotePlayer?.isPaused &&
+    remotePlayer?.playerState !== "PLAYING"
+  ) {
+    remotePlayerController.playOrPause();
+    context.pausedOnCasting = false;
+    context.playPauseButton.innerHTML = PauseIcon;
+    localStorage.setItem("pausedOnCasting", "false");
+  } else {
+    remotePlayerController.playOrPause();
+    context.pausedOnCasting = true;
+    context.playPauseButton.innerHTML = PlayIcon;
+    localStorage.setItem("pausedOnCasting", "true");
+  }
+}
+
+function toggleVideoPlayback(
+  context: any,
+  playbackId: string | null,
+  thumbnailUrlFinal: string | null,
+  streamType: string | null
+): void {
+  initializeControlsAfterPlayClick(context);
+  const isIosDevice = isIOS(context); // Check iOS early
+  const castContext = isIosDevice ? null : getCastContext();
+  const { remotePlayer } = isIosDevice
+    ? { remotePlayer: null }
+    : getRemotePlaybackInstance(context);
+
+  if (isIosDevice) {
+    console.log("iOS detected, skipping Chromecast logic.");
+  }
+
+  if (
+    !isIosDevice &&
+    isChromecastConnected() &&
+    remotePlayer?.canSeek !== false
+  ) {
+    toggleRemotePlayback(context);
+    return; // Do not interact with the local video player
+  } else {
+    localStorage.removeItem("pausedOnCasting");
+
+    // End Chromecast session only if not iOS and CastContext available
+    if (!isIosDevice && castContext) {
+      castContext.endCurrentSession(true);
+    }
+  }
+
+  // Local player logic
   if (!context.isLoading) {
     if (context.video.paused) {
       if (!context.initialPlayClick || context.video.autoplay) {
@@ -144,8 +211,8 @@ function toggleVideoPlayback(
         context.video
           .play()
           .then(() => {
-            hideLoader(context); // Hide loader once video is ready
-            context.initialPlayClick = true; // Set initialPlayClick to true
+            hideLoader(context);
+            context.initialPlayClick = true;
             showInitialControls(
               context,
               context.video.offsetWidth,
@@ -156,7 +223,7 @@ function toggleVideoPlayback(
           })
           .catch((error: { message: any }) => {
             console.error("Error playing video:", error.message, error);
-            hideLoader(context); // Hide loader on error
+            hideLoader(context);
           });
       } else {
         context.video.addEventListener(
@@ -165,8 +232,8 @@ function toggleVideoPlayback(
             context.video
               .play()
               .then(() => {
-                hideLoader(context); // Hide loader once video is ready
-                context.initialPlayClick = true; // Set initialPlayClick to true
+                hideLoader(context);
+                context.initialPlayClick = true;
                 showInitialControls(
                   context,
                   context.video.offsetWidth,
@@ -181,7 +248,7 @@ function toggleVideoPlayback(
                   error.message,
                   error
                 );
-                hideLoader(context); // Hide loader on error
+                hideLoader(context);
               });
           },
           { once: true }
@@ -194,20 +261,6 @@ function toggleVideoPlayback(
       context.playPauseButton.innerHTML = PlayIcon;
     }
   }
-
-  context.video.addEventListener("canplay", () => {
-    context.isLoading = false;
-    hideLoader(context);
-    if (context.initialPlayClick) {
-      showInitialControls(
-        context,
-        context.video.offsetWidth,
-        playbackId,
-        context.thumbnailUrlFinal,
-        streamType
-      );
-    }
-  });
 }
 
 function toggleSubtitlesMenu(context: any) {
@@ -247,7 +300,7 @@ function toggleSubtitlesMenu(context: any) {
     const track: any = tracksArray[index];
     const menuItem = documentObject.createElement("button");
     menuItem.className = "subtitleSelectorButtons";
-    menuItem.textContent = track.label || `Language ${index + 1}`;
+    menuItem.textContent = track.label ?? `Language ${index + 1}`;
 
     menuItem.addEventListener("click", () => {
       changeSubtitleTrack(context, index); // Pass the track index
@@ -280,6 +333,26 @@ function hideShowSubtitlesMenu(context: any) {
   }
 }
 
+function storeSubtitleLanguage(language: string) {
+  localStorage.setItem("selectedSubtitleLanguage", language);
+}
+
+function getStoredSubtitleLanguage() {
+  return localStorage.getItem("selectedSubtitleLanguage") ?? "en"; // Default to English
+}
+
+function switchSubtitleTrackOnChromecast(trackIndex: number) {
+  const castContext = getCastContext();
+  const session = castContext.getCurrentSession();
+  if (session) {
+    const media = session.getMediaSession();
+    const track = media.getTracks()[trackIndex];
+    if (track) {
+      media.setTextTrack(track);
+    }
+  }
+}
+
 export {
   toggleSubtitleWithKeyC,
   toggleFullScreen,
@@ -288,5 +361,10 @@ export {
   togglePlaybackRateButtons,
   toggleVideoPlayback,
   toggleSubtitlesMenu,
+  getRemotePlaybackInstance,
+  initializeControlsAfterPlayClick,
+  storeSubtitleLanguage,
+  getStoredSubtitleLanguage,
+  switchSubtitleTrackOnChromecast,
   hideShowSubtitlesMenu,
 };

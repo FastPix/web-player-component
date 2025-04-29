@@ -48,7 +48,7 @@ function activeChapter(context: any) {
     (chapter: { startTime: number; endTime: any }) => {
       return (
         currentTime >= chapter.startTime &&
-        currentTime < (chapter.endTime || Infinity)
+        currentTime < (chapter.endTime ?? Infinity)
       );
     }
   );

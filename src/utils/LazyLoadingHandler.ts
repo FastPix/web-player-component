@@ -24,13 +24,14 @@ async function initializeLazyLoadStream(
   setupStream: () => Promise<void>
 ) {
   if (context.hasAttribute("enable-lazy-loading")) {
-    setupLazyLoading(context, () => {
-      attachShadowAndSetup(context); // Attach shadow and append elements
-      setupStream(); // Setup the stream
+    setupLazyLoading(context, async () => {
+      attachShadowAndSetup(context);
+      const streamUrl = await setupStream();
+      context.streamUrlFinal = streamUrl; // Store the result
     });
   } else {
-    attachShadowAndSetup(context); // Attach shadow and append elements
-    setupStream(); // Setup the stream
+    attachShadowAndSetup(context);
+    context.streamUrlFinal = await setupStream();
   }
 }
 

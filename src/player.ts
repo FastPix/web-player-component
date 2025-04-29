@@ -42,6 +42,7 @@ import {
   ExitFullScreenIcon,
 } from "./icons/FullScreenIcon/index";
 import {
+  getSRC,
   receiveAttributes,
   setStreamUrl,
   updateTimeDisplay,
@@ -53,6 +54,7 @@ import {
   setPlaybackRate,
 } from "./utils/PlaybackRatesHandler";
 import { initializeAnalytics } from "./utils/IntegrateAnlytics";
+import { loadCastAPI, setupChromecast } from "./utils/CastHandler";
 
 class FastPixPlayer extends windowObject.HTMLElement {
   [x: string]: any;
@@ -69,6 +71,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   resolutionSwitching: boolean;
   disabledAllCaptions: boolean;
   progressBarVisible: boolean;
+  pausedOnCasting: boolean;
   cache: Map<string, unknown>;
   initialPlayClick: boolean;
   isInitialLoad: boolean;
@@ -87,6 +90,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   subtitleMenu: HTMLDivElement;
   ccButton: HTMLButtonElement;
   playbackRateDiv?: HTMLDivElement;
+  isMuted?: boolean;
   resolutionMenu: HTMLDivElement;
   audioMenu: HTMLDivElement;
   retryButton: HTMLButtonElement;
@@ -96,11 +100,14 @@ class FastPixPlayer extends windowObject.HTMLElement {
   thumbnailSeekingContainer: HTMLDivElement;
   chapterDisplay: HTMLDivElement;
   progressBar: any;
+  currentCastSession: chrome.cast.Session | null;
+  castMediaDuration: number | null;
   playPauseButton: HTMLButtonElement;
   bottomRightDiv: HTMLDivElement;
   resolutionMenuButton: HTMLButtonElement;
   subtitleContainer: HTMLDivElement;
   wasPausedBeforeSwitch: boolean;
+  wasManuallyPaused: boolean;
   audioMenuButton: HTMLButtonElement;
   videoOverLay: HTMLDivElement;
   pipButton: HTMLButtonElement;
@@ -108,7 +115,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   fastForwardButton: HTMLButtonElement;
   rewindBackButton: HTMLButtonElement;
   forwardSeekOffset?: number | null;
-  backwardSeekOffset?: number;
+  backwardSeekOffset?: number | null;
   parentVolumeDiv: HTMLDivElement;
   volumeButton: HTMLButtonElement;
   volumeiOSButton: HTMLButtonElement;
@@ -118,6 +125,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   bottomCenterDiv?: HTMLDivElement;
   spacer: HTMLDivElement;
   playbackRateButton?: HTMLButtonElement | null;
+  castButton?: HTMLButtonElement;
   titleElement?: HTMLDivElement | null;
   debugAttribute?: boolean | null;
   thumbnailUrlAttribute?: string | null;
@@ -153,6 +161,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.pauseAfterLoading = false;
     this.resolutionSwitching = false;
     this.disabledAllCaptions = false;
+    this.wasManuallyPaused = false;
     this.video.controls = false;
     this.progressBarVisible = false;
     this.cache = new Map();
@@ -162,9 +171,13 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.playbackRates = [];
     this.isInitialLoad = true;
     this.videoEnded = false;
+    this.pausedOnCasting = false;
+    this.currentCastSession = null;
+    this.castMediaDuration = null;
     this.currentSubtitleTrackIndex = -1;
     this.chapters = [];
     this._src = null;
+    this.isMuted = false;
     this.previousChapter = null;
     this.retryButtonVisible = false;
     hideDefaultSubtitlesStyles(this);
@@ -186,6 +199,10 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.ccButton = documentObject.createElement("button");
     this.ccButton.className = "ccButton";
     this.ccButton.innerHTML = CaptionIcon;
+
+    this.castButton = documentObject.createElement("button");
+    this.castButton.className = "castButton";
+
     subtileButtonClickHandler(this);
     this.retryButton = documentObject.createElement("button");
     this.retryButton.innerHTML = `<svg width="25%" height="25%" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 6V2L7 7L12 12V8C15.31 8 18 10.69 18 14C18 17.31 15.31 20 12 20C8.69 20 6 17.31 6 14H4C4 18.42 7.58 22 12 22C16.42 22 20 18.42 20 14C20 9.58 16.42 6 12 6Z" fill="currentColor"/>
@@ -320,7 +337,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.volumeControl.type = "range";
     this.volumeControl.min = "0";
     this.volumeControl.max = "1";
-    this.volumeControl.step = "0.1";
+    this.volumeControl.step = "0.2";
     this.volumeControl.value = "1";
     this.volumeControl.style.display = "none";
     if ("appearance" in this.volumeControl.style) {
@@ -462,12 +479,10 @@ class FastPixPlayer extends windowObject.HTMLElement {
     );
 
     chapters.forEach((chapter: { endTime: undefined }, index: number) => {
-      if (chapter.endTime === undefined) {
-        chapter.endTime =
-          index < chapters.length - 1
-            ? chapters[index + 1].startTime
-            : this.video.duration;
-      }
+      chapter.endTime ??=
+        index < chapters.length - 1
+          ? chapters[index + 1].startTime
+          : this.video.duration;
     });
 
     this.chapters = chapters;
@@ -480,7 +495,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
       (chapter: { startTime: number; endTime: any }) => {
         return (
           currentTime >= chapter.startTime &&
-          currentTime < (chapter.endTime || Infinity)
+          currentTime < (chapter.endTime ?? Infinity)
         );
       }
     );
@@ -572,6 +587,9 @@ class FastPixPlayer extends windowObject.HTMLElement {
         playbackUrlFinal ?? undefined, // Explicitly allow undefined
         this.streamType ?? null // Ensure it's either a string or null
       );
+      this._src = getSRC();
+      loadCastAPI();
+      setupChromecast(this.castButton, this.video, this._src, this); // Initialize Chromecast functionality
     };
 
     // initialize stream based on lazy loading enabled
@@ -597,9 +615,9 @@ class FastPixPlayer extends windowObject.HTMLElement {
       hideMenus(this);
       toggleVideoPlayback(
         this,
-        this.playbackId,
-        this.thumbnailUrlFinal,
-        this.streamType
+        this.playbackId ?? "",
+        this.thumbnailUrlFinal ?? "",
+        this.streamType ?? ""
       );
     });
 
@@ -655,6 +673,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
     this.bottomRightDiv.appendChild(this.ccButton);
     this.bottomRightDiv.appendChild(this.playbackRateButton);
+    this.bottomRightDiv.appendChild(this.castButton);
     this.bottomRightDiv.appendChild(this.pipButton);
     this.bottomRightDiv.appendChild(this.fullScreenButton);
     this.bottomRightDiv.appendChild(this.subtitleMenu);

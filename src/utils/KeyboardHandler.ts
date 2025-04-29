@@ -1,7 +1,6 @@
 import {
   fastForwardButtonClickHandler,
   rewindButtonClickHandler,
-  toggleKeyForPlayPause,
 } from "./ClickHandlers";
 import {
   hidebackDropColor,
@@ -18,22 +17,25 @@ import {
 import { adjustVolume, toggleMuteUnmute } from "./VolumeController";
 
 const isMouseOverControl = (context: any) => {
-  return (
-    context.progressBarContainer.matches(":hover") ||
-    context.volumeControl.matches(":hover") ||
-    context.pipButton.matches(":hover") ||
-    context.fullScreenButton.matches(":hover") ||
-    context.fastForwardButton.matches(":hover") ||
-    context.rewindBackButton.matches(":hover") ||
-    context.playPauseButton.matches(":hover") ||
-    context.timeDisplay.matches(":hover") ||
-    context.volumeButton.matches(":hover") ||
-    context.volumeiOSButton.matches(":hover") ||
-    context.resolutionMenu.matches(":hover") ||
-    context.resolutionMenuButton.matches(":hover") ||
-    context.playbackRateDiv.matches(":hover") ||
-    context.playbackRateButton.matches(":hover")
-  );
+  const controls = [
+    context.progressBarContainer,
+    context.volumeControl,
+    context.pipButton,
+    context.fullScreenButton,
+    context.fastForwardButton,
+    context.rewindBackButton,
+    context.playPauseButton,
+    context.timeDisplay,
+    context.volumeButton,
+    context.volumeiOSButton,
+    context.resolutionMenu,
+    context.resolutionMenuButton,
+    context.playbackRateDiv,
+    context.playbackRateButton,
+    context.castButton,
+  ];
+
+  return controls.some((control) => control?.matches(":hover"));
 };
 
 const showControls = (context: any) => {
@@ -55,6 +57,9 @@ const showControls = (context: any) => {
   if (context.controlsContainer.contains(context.mobileControls)) {
     context.mobileControls.style.opacity = "1";
   }
+  if (context.controlsContainer.contains(context.castButton)) {
+    context.castButton.style.opacity = "1";
+  }
   context.leftControls.style.opacity = "1";
   context.resolutionMenu.style.opacity = "1";
   context.playbackRateDiv.style.opacity = "1";
@@ -62,6 +67,7 @@ const showControls = (context: any) => {
   context.titleElement.style.opacity = "1";
   context.audioMenuButton.style.opacity = "1";
   context.subtitleMenu.style.opacity = "1";
+
   moveSubtitlesUp(context);
   showbackDropColor(context);
   context.resetHideControlsTimer();
@@ -144,7 +150,13 @@ const KeyBoardInputManager = (context: any) => {
       const keyActions: Record<string, () => void> = {
         KeyK: () => {
           if (!context.isLoading) {
-            toggleKeyForPlayPause(context);
+            toggleVideoPlayback(
+              context,
+              context.playbackId,
+              context.thumbnailUrlFinal,
+              context.streamType
+            );
+            hideMenus(context);
           } else {
             context.pauseAfterLoading = context.video.paused;
           }
