@@ -68,7 +68,7 @@ async function fetchThumbnailJson(
   context.spritesheetCache ??= {};
 
   try {
-    let spritesheetUrl = `${spritesheetSrc}/${playbackId}/storyboard.json`;
+    let spritesheetUrl = `${spritesheetSrc}/${playbackId}/spritesheet.json`;
 
     const token = context.getAttribute("token");
     if (token) {
