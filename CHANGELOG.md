@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2025-05-05
+
+### Bug Fix
+
+- Fixed the spritesheet issue.
+
 ## [1.0.2] - 2025-04-29
 
 ### Beta Feature: Chromecast Integration
