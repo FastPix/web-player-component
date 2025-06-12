@@ -141,7 +141,7 @@ To get started with the FastPix Player SDK we need some prerequisites, follow th
 To get started with the SDK, first install the FastPix Player SDK for Web, you can use npm or your favourite node package manager 😉:
 
 ```shell
-npm install @fastpix/player
+npm install @fastpix/fp-player
 ```
 
 # Basic Usage:
