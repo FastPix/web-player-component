@@ -5,7 +5,11 @@ import {
 } from "./ToggleController";
 
 import { PauseIcon, PlayIcon } from "../icons/PlayPauseIcon/index";
-import { activeChapter, ensureChaptersLoaded } from "./ChaptersHandlers";
+import {
+  activeChapter,
+  ensureChaptersLoaded,
+  updateChapterMarkers,
+} from "./ChaptersHandlers";
 import { hideLoader, hideMenus, showLoader } from "./DomVisibilityManager";
 import {
   adjustCurrentTimeBy,
@@ -35,6 +39,7 @@ import {
 // connectedCallback
 const videoListeners = (context: any) => {
   if (context) {
+    context.isWaitingForKey = false;
     context.video.addEventListener("loadedmetadata", () => {
       if (!isChromeBrowser()) {
         context.bottomRightDiv.removeChild(context.castButton);
@@ -51,7 +56,6 @@ const videoListeners = (context: any) => {
 
     // Instead of setTimeout, rely on actual loading:
     context.video.addEventListener("loadedmetadata", () => {
-      context._readyState = 1;
       context.dispatchEvent(new Event("loadedmetadata"));
     });
 
@@ -104,6 +108,9 @@ const videoListeners = (context: any) => {
     });
 
     context.video.addEventListener("playing", () => {
+      if (!context.video.paused && context.video.readyState >= 2) {
+        hideLoader(context);
+      }
       if (!context.isBuffering) {
         hideLoader(context);
       }
@@ -116,6 +123,14 @@ const videoListeners = (context: any) => {
         context.video.pause();
         context.pauseAfterLoading = false;
       }
+    });
+
+    context.video.addEventListener("canplay", () => {
+      context.isBuffering = false;
+      context.isLoading = false;
+      setTimeout(() => {
+        hideLoader(context);
+      }, 10);
     });
 
     context.video.addEventListener("canplaythrough", () => {
@@ -174,6 +189,10 @@ const videoListeners = (context: any) => {
     });
 
     context.video.addEventListener("timeupdate", () => {
+      if (!context.video.paused && context.video.readyState >= 2) {
+        hideLoader(context);
+      }
+
       let currentTime = getCurrentTime(context);
       const duration = context.video.duration;
       const bufferEnd =
@@ -400,7 +419,10 @@ const videoListeners = (context: any) => {
 
       // Hide menus and active chapter
       hideMenus(context);
-      activeChapter(context);
+      if (context.chapters > 0) {
+        updateChapterMarkers(context);
+        activeChapter(context);
+      }
     });
 
     context.volumeControl.addEventListener("input", () => {

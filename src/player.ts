@@ -19,7 +19,6 @@ import { handleTitleContainer, hideMenus } from "./utils/DomVisibilityManager";
 import { hideDefaultSubtitlesStyles } from "./utils/SubtitleHandler";
 
 import {
-  configHls,
   handleHlsQualityAndTrackSetup,
   Hls,
   hlsListeners,
@@ -42,6 +41,7 @@ import {
   ExitFullScreenIcon,
 } from "./icons/FullScreenIcon/index";
 import {
+  DrmSetup,
   getSRC,
   receiveAttributes,
   setStreamUrl,
@@ -100,7 +100,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   thumbnailSeekingContainer: HTMLDivElement;
   chapterDisplay: HTMLDivElement;
   progressBar: any;
-  currentCastSession: chrome.cast.Session | null;
+  currentCastSession: any;
   castMediaDuration: number | null;
   playPauseButton: HTMLButtonElement;
   bottomRightDiv: HTMLDivElement;
@@ -150,7 +150,25 @@ class FastPixPlayer extends windowObject.HTMLElement {
     super();
 
     this._readyState = 0;
-    this.hls = new Hls(configHls);
+    this.config = {
+      maxMaxBufferLength: 120, // Extend max buffer length for high-quality streams
+      autoStartLoad: true,
+      debug: false,
+      enableWorker: false,
+      startLevel: 0, // Start at a middle-level quality (adjust as appropriate)
+      backBufferLength: 90,
+      emeEnabled: true,
+      lowLatencyMode: true,
+      capLevelToPlayerSize: true, // Automatically adjusts level to player size
+      abrEwmaFastLive: 2.0, // Tune ABR responsiveness for live content
+      abrEwmaSlowLive: 8.0,
+      abrMaxWithRealBitrate: true, // Use real bitrate for level switching
+      drmSystems: {
+        "com.widevine.alpha": {},
+        "com.apple.fps": {},
+      },
+    };
+    this.hls = new Hls(this.config);
     this.video = documentObject.createElement("video");
     this.resolutionFlagPause = false;
     this.isLoading = false;
@@ -523,6 +541,27 @@ class FastPixPlayer extends windowObject.HTMLElement {
     return chapterInfo;
   }
 
+  convertChaptersToPlayerFormat(chaptersObj: any): [] {
+    // Helper to convert HH:MM:SS to seconds
+    function timeToSeconds(timeStr: string): number {
+      const [h, m, s] = timeStr.split(":").map(Number);
+      return h * 3600 + m * 60 + s;
+    }
+
+    return chaptersObj.chapters.map((chapter: any) => {
+      const startTime = timeToSeconds(chapter.startTime);
+      const endTime = chapter.endTime
+        ? timeToSeconds(chapter.endTime)
+        : undefined;
+      return {
+        startTime,
+        endTime,
+        value: chapter.title,
+        summary: chapter.summary,
+      };
+    });
+  }
+
   convertOpenAIChapters(openAIChapters: any[]) {
     return openAIChapters.map((chapter: { start: string; title: any }) => {
       const timeParts = chapter.start.split(":");
@@ -580,6 +619,16 @@ class FastPixPlayer extends windowObject.HTMLElement {
           : "https://stream.fastpix.io";
       }
 
+      let isDrm = false;
+
+      if (this.drmToken) {
+        isDrm = true;
+      }
+
+      if (isDrm) {
+        DrmSetup(this);
+      }
+
       await setStreamUrl(
         this,
         this.playbackId ?? null, // Ensure it's either a string or null
@@ -588,8 +637,15 @@ class FastPixPlayer extends windowObject.HTMLElement {
         this.streamType ?? null // Ensure it's either a string or null
       );
       this._src = getSRC();
-      loadCastAPI();
-      setupChromecast(this.castButton, this.video, this._src, this); // Initialize Chromecast functionality
+      const isSafari = /^((?!chrome|android).)*safari/i.test(
+        navigator.userAgent
+      );
+      if (!isSafari) {
+        loadCastAPI();
+        if (this.castButton) {
+          setupChromecast(this.castButton, this.video, this._src ?? "", this); // Initialize Chromecast functionality
+        }
+      }
     };
 
     // initialize stream based on lazy loading enabled
@@ -673,7 +729,9 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
     this.bottomRightDiv.appendChild(this.ccButton);
     this.bottomRightDiv.appendChild(this.playbackRateButton);
-    this.bottomRightDiv.appendChild(this.castButton);
+    if (this.castButton) {
+      this.bottomRightDiv.appendChild(this.castButton);
+    }
     this.bottomRightDiv.appendChild(this.pipButton);
     this.bottomRightDiv.appendChild(this.fullScreenButton);
     this.bottomRightDiv.appendChild(this.subtitleMenu);

@@ -88,7 +88,7 @@ const videoEvents: string[] = [
   "seeking",
   "stalled",
   "suspend",
-  "timeupdate",
+  // "timeupdate",
   "volumechange",
   "waiting",
   "encrypted",
@@ -562,7 +562,6 @@ function updateTimeDisplay(context: any): void {
 }
 
 function receiveAttributes(context: any) {
-  context.playbackId = context.getAttribute("playback-id");
   context.mutedAttribute = context.hasAttribute("muted");
   context.hasAutoPlayAttribute = context.hasAttribute("auto-play");
   context.loopAttribute = context.hasAttribute("loop");
@@ -571,9 +570,9 @@ function receiveAttributes(context: any) {
   context.controlsContainerValue = updateControlsVisibility(context);
   context.hideControlAttr = context.hasAttribute("hide-controls");
 
-  updateControlsVisibility(context);
-
   context.token = context.getAttribute("token");
+  context.drmToken = context.getAttribute("drm-token");
+  context.playbackId = context.getAttribute("playback-id");
 
   context.defaultStreamType =
     context.getAttribute("default-stream-type") ?? "on-demand";
@@ -636,6 +635,16 @@ function receiveAttributes(context: any) {
   context.backwardSeekAttribute = context.getAttribute("backward-seek-offset");
 }
 
+function DrmSetup(context: any) {
+  // Set up drmSystems config before creating Hls
+  context.config.drmSystems["com.widevine.alpha"].licenseUrl =
+    `https://api.fastpix.io/v1/on-demand/drm/license/widevine/${context.playbackId}?token=${context.drmToken}`;
+  context.config.drmSystems["com.apple.fps"].licenseUrl =
+    `https://api.fastpix.io/v1/on-demand/drm/license/fairplay/${context.playbackId}?token=${context.drmToken}`;
+  context.config.drmSystems["com.apple.fps"].serverCertificateUrl =
+    `https://api.fastpix.io/v1/on-demand/drm/cert/fairplay/${context.playbackId}?token=${context.drmToken}`;
+}
+
 export {
   setStreamUrl,
   formatVideoDuration,
@@ -644,6 +653,7 @@ export {
   updateTimeDisplay,
   adjustCurrentTimeBy,
   receiveAttributes,
+  DrmSetup,
   isChromeBrowser,
   isIOS,
   getSyncedCurrentTime,

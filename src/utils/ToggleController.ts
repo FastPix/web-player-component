@@ -9,7 +9,7 @@ import {
   showInitialControls,
   showLoader,
 } from "./DomVisibilityManager";
-import { getCastContext, isChromecastConnected } from "./CastHandler";
+import { getCastContext, isChromecastAvailable } from "./CastHandler";
 import { isIOS } from "./index";
 
 interface Track {
@@ -166,101 +166,115 @@ function toggleRemotePlayback(context: any) {
   }
 }
 
+function localPlayerLogic(
+  context: any,
+  playbackId: string | null,
+  thumbnailUrlFinal: string | null,
+  streamType: string | null
+) {
+  initializeControlsAfterPlayClick(context);
+  if (context.isLoading) return;
+  if (context.video.paused) {
+    if (!context.initialPlayClick || context.video.autoplay) {
+      showLoader(context);
+      hideInitControls(context);
+    }
+    if (context.video.readyState >= 3) {
+      context.video
+        .play()
+        .then(() => {
+          hideLoader(context);
+          context.initialPlayClick = true;
+          showInitialControls(
+            context,
+            context.video.offsetWidth,
+            playbackId,
+            thumbnailUrlFinal,
+            streamType
+          );
+        })
+        .catch((error: { message: any }) => {
+          console.error("Error playing video:", error.message, error);
+          hideLoader(context);
+        });
+    } else {
+      context.video.addEventListener(
+        "canplay",
+        () => {
+          context.video
+            .play()
+            .then(() => {
+              hideLoader(context);
+              context.initialPlayClick = true;
+              showInitialControls(
+                context,
+                context.video.offsetWidth,
+                playbackId,
+                thumbnailUrlFinal,
+                streamType
+              );
+            })
+            .catch((error: { message: any }) => {
+              console.error(
+                "Error playing video after canplay:",
+                error.message,
+                error
+              );
+              hideLoader(context);
+            });
+        },
+        { once: true }
+      );
+    }
+    context.playPauseButton.innerHTML = PauseIcon;
+  } else {
+    context.video.pause();
+    context.playPauseButton.innerHTML = PlayIcon;
+  }
+  context.video.addEventListener("canplay", () => {
+    context.isLoading = false;
+    hideLoader(context);
+    if (context.initialPlayClick) {
+      showInitialControls(
+        context,
+        context.video.offsetWidth,
+        playbackId,
+        context.thumbnailUrlFinal,
+        streamType
+      );
+    }
+  });
+}
+
 function toggleVideoPlayback(
   context: any,
   playbackId: string | null,
   thumbnailUrlFinal: string | null,
   streamType: string | null
 ): void {
-  initializeControlsAfterPlayClick(context);
-  const isIosDevice = isIOS(context); // Check iOS early
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isIosDevice = isIOS(context);
+  const chromecastAvailable = isChromecastAvailable();
   const castContext = isIosDevice ? null : getCastContext();
   const { remotePlayer } = isIosDevice
     ? { remotePlayer: null }
     : getRemotePlaybackInstance(context);
 
-  if (isIosDevice) {
-    console.log("iOS detected, skipping Chromecast logic.");
+  if (isSafari || !chromecastAvailable) {
+    localPlayerLogic(context, playbackId, thumbnailUrlFinal, streamType);
+    return;
   }
 
-  if (
-    !isIosDevice &&
-    isChromecastConnected() &&
-    remotePlayer?.canSeek !== false
-  ) {
+  if (!isIosDevice && chromecastAvailable && remotePlayer?.canSeek !== false) {
     toggleRemotePlayback(context);
-    return; // Do not interact with the local video player
-  } else {
-    localStorage.removeItem("pausedOnCasting");
-
-    // End Chromecast session only if not iOS and CastContext available
-    if (!isIosDevice && castContext) {
-      castContext.endCurrentSession(true);
-    }
+    return;
   }
 
-  // Local player logic
-  if (!context.isLoading) {
-    if (context.video.paused) {
-      if (!context.initialPlayClick || context.video.autoplay) {
-        showLoader(context);
-        hideInitControls(context);
-      }
-
-      if (context.video.readyState >= 3) {
-        context.video
-          .play()
-          .then(() => {
-            hideLoader(context);
-            context.initialPlayClick = true;
-            showInitialControls(
-              context,
-              context.video.offsetWidth,
-              playbackId,
-              thumbnailUrlFinal,
-              streamType
-            );
-          })
-          .catch((error: { message: any }) => {
-            console.error("Error playing video:", error.message, error);
-            hideLoader(context);
-          });
-      } else {
-        context.video.addEventListener(
-          "canplay",
-          () => {
-            context.video
-              .play()
-              .then(() => {
-                hideLoader(context);
-                context.initialPlayClick = true;
-                showInitialControls(
-                  context,
-                  context.video.offsetWidth,
-                  playbackId,
-                  thumbnailUrlFinal,
-                  streamType
-                );
-              })
-              .catch((error: { message: any }) => {
-                console.error(
-                  "Error playing video after canplay:",
-                  error.message,
-                  error
-                );
-                hideLoader(context);
-              });
-          },
-          { once: true }
-        );
-      }
-
-      context.playPauseButton.innerHTML = PauseIcon;
-    } else {
-      context.video.pause();
-      context.playPauseButton.innerHTML = PlayIcon;
-    }
+  localStorage.removeItem("pausedOnCasting");
+  if (!isIosDevice && castContext) {
+    castContext.endCurrentSession(true);
   }
+  localPlayerLogic(context, playbackId, thumbnailUrlFinal, streamType);
 }
 
 function toggleSubtitlesMenu(context: any) {

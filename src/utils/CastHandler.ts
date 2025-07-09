@@ -40,6 +40,16 @@ function checkChromecastAvailability(): boolean {
   );
 }
 
+const isChromecastAvailable = () => {
+  const castContext = (
+    window as any
+  )?.cast?.framework?.CastContext?.getInstance?.();
+  if (!castContext) return false;
+
+  const state = castContext.getCastState?.();
+  return state === "AVAILABLE" || state === "CONNECTED";
+};
+
 function initializeCastIfAvailable(
   button: HTMLButtonElement,
   video: HTMLVideoElement,
@@ -589,6 +599,7 @@ export {
   isChromecastActive,
   syncVolumeWithChromecast,
   seekChromecastProgressbar,
+  isChromecastAvailable,
   getCastContext,
   disconnectIfCastFinished,
   onVolumeChangeDuringCasting,

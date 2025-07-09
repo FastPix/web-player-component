@@ -139,8 +139,6 @@ function VolumeButtonClickHandler(context: any) {
       context.video.volume = 0; // Set video volume to 0 when muting
     }
 
-    console.log("sravani", context.video.muted, context.video.volume);
-
     // Update UI
     updateVolumeControlBackground(context);
     updateVolumeButtonIcon(context);

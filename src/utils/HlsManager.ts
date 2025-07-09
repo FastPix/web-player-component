@@ -23,12 +23,6 @@ const configHls: Partial<Hls.HlsConfig> = {
   abrEwmaFastLive: 2.0,
   abrEwmaSlowLive: 8.0,
   abrMaxWithRealBitrate: true,
-  drmSystems: {
-    "com.widevine.alpha": {},
-  },
-  "com.apple.fps": {
-    serverCertificateUrl: "https://static.fastpix.io/fairplay.cer",
-  },
 };
 
 const hlsInstance: Hls | null = null;
@@ -84,10 +78,10 @@ function setupErrorHandling(context: any, streamType: string | null) {
       return;
     }
 
-    if (details.startsWith("KEY_SYSTEM")) {
+    if (details.startsWith("key")) {
       showError(
         context,
-        "A DRM (Digital Rights Management) error occurred. Playback session cannot continue."
+        "A DRM (Digital Rights Management) error occurred. Please check your drm-token or token for the stream."
       );
       return;
     }
@@ -175,16 +169,16 @@ function setupErrorHandling(context: any, streamType: string | null) {
 
   context.hls.on(
     Hls.Events.ERROR,
-    (data: { details: any; type?: any; fatal?: any }) => {
-      const { type, details, fatal } = data;
+    (data: { details: any; type?: any; fatal?: any }, event: any) => {
+      console.error("Fatal Hls error:", Hls.ErrorDetails);
 
       // Check for fatal errors
-      if (fatal) {
-        console.error("Fatal Hls error:", details);
+      if (event.fatal) {
+        console.error("Fatal Hls error DD:", event.details);
 
-        fatalErrorHandling(context, details);
+        fatalErrorHandling(context, event.details);
       } else {
-        keySystemErrorHandlingNonFatal(context, details);
+        keySystemErrorHandlingNonFatal(context, event.details);
       }
 
       // Handle specific error cases for different stream types
@@ -192,7 +186,7 @@ function setupErrorHandling(context: any, streamType: string | null) {
         handleOnDemandErrors(context, data);
       } else {
         handleLiveStreamErrors(context, data);
-        mediaErrorHandlingNonFatal(context, fatal, type);
+        mediaErrorHandlingNonFatal(context, event.fatal, event.type);
       }
     }
   );
@@ -278,37 +272,6 @@ function hlsListeners(context: any) {
   context.hls.on(Hls.Events.MANIFEST_PARSED, () => {
     context.hls.attachMedia(context.video);
   });
-
-  context.hls.on(
-    Hls.Events.MANIFEST_PARSED,
-    (event: any, data: { levels: any[] }) => {
-      if (
-        context.streamType === "on-demand" &&
-        data.levels &&
-        data.levels.length > 0
-      ) {
-        const level = findLevel(data.levels);
-        if (level?.uri) {
-          fetchManifest(level.uri, context.debugAttribute);
-        }
-      }
-    }
-  );
-}
-
-function findLevel(levels: any[]) {
-  return levels.find((level: { uri: any }) => level?.uri);
-}
-
-function fetchManifest(uri: string, debugAttribute: boolean) {
-  fetch(uri)
-    .then((response) => response.text())
-    .then((manifestText) => {
-      const keyAttributes = parseKeyAttributes(manifestText);
-      if (debugAttribute) {
-        console.log("Parsed key attributes: ", keyAttributes);
-      }
-    });
 }
 
 function parseKeyAttributes(manifestText: string) {
@@ -343,7 +306,6 @@ function handleHlsQualityAndTrackSetup(context: any) {
         renditionOrderAttr === "desc"
           ? [...levelsRetrieved].reverse()
           : levelsRetrieved;
-
       setupResolutionUI(context, levels);
       setupAudioTracks(context, audioTracks);
       setupSubtitleButton(context, subtitleTracks);

@@ -1,5 +1,6 @@
 import { documentObject } from "./CustomElements";
 import { resizeVideoWidth } from "./ResizeVideo";
+import { updateChapterMarkers } from "./ChaptersHandlers";
 
 function handleFullScreenChange(context: any) {
   const video = context.wrapper.querySelector("video");
@@ -17,24 +18,40 @@ function handleFullScreenChange(context: any) {
 }
 
 function fullScreenChangeHandler(context: any) {
+  function updateMarkersIfReady() {
+    if (context.video.readyState >= 1) {
+      updateChapterMarkers(context);
+    } else {
+      context.video.addEventListener(
+        "loadedmetadata",
+        () => updateChapterMarkers(context),
+        { once: true }
+      );
+    }
+  }
+
   documentObject.addEventListener("fullscreenchange", () => {
     if (document.fullscreenElement) {
       resizeVideoWidth(context);
     }
+    updateMarkersIfReady();
   });
 
   documentObject.addEventListener("fullscreenchange", () =>
     handleFullScreenChange(context)
   );
-  documentObject.addEventListener("webkitfullscreenchange", () =>
-    handleFullScreenChange(context)
-  );
-  documentObject.addEventListener("mozfullscreenchange", () =>
-    handleFullScreenChange(context)
-  );
-  documentObject.addEventListener("MSFullscreenChange", () =>
-    handleFullScreenChange(context)
-  );
+  documentObject.addEventListener("webkitfullscreenchange", () => {
+    handleFullScreenChange(context);
+    updateMarkersIfReady();
+  });
+  documentObject.addEventListener("mozfullscreenchange", () => {
+    handleFullScreenChange(context);
+    updateMarkersIfReady();
+  });
+  documentObject.addEventListener("MSFullscreenChange", () => {
+    handleFullScreenChange(context);
+    updateMarkersIfReady();
+  });
 }
 
 export { fullScreenChangeHandler };

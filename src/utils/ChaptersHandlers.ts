@@ -5,8 +5,9 @@ function updateChapterMarkers(context: any) {
     return;
   }
 
-  const existingMarkers =
-    context.progressBarContainer.querySelectorAll(".chapter-marker");
+  const existingMarkers = context.progressBarContainer.querySelectorAll(
+    ".chapter-marker, .chapter-marker-end"
+  );
   existingMarkers.forEach((marker: { remove: () => any }) => marker.remove());
 
   const progressBarWidth = context.progressBar.getBoundingClientRect().width;

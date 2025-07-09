@@ -737,7 +737,7 @@ bottom: 10px;
     bottom: 35px;
     position: absolute;
     left: 0;
-    width: 3px;
+    width: 1px;
     background-color: rgba(0, 0, 0, 0.4);
 }
 
@@ -1597,10 +1597,9 @@ justify-content: center !important;
 
 .thumbnailSeeking.chapters.md.show .thumbnailChapterDisplay.multi-line {
     min-width: 157.59px;
-    font-size: 12px;
-    bottom: -44px;
-    background-color: var(--primary-color);
-    color: #333333;
+    font-size: 14px;
+    bottom: -57px;
+    color: var(--primary-color);
 }
 
 .thumbnailSeeking.chapters.sm.show .thumbnailTimeDisplay {
@@ -1616,25 +1615,23 @@ justify-content: center !important;
 
 .thumbnailSeeking.chapters.sm.show .thumbnailChapterDisplay.multi-line {
     min-width: 157.59px;
-    font-size: 10px;
+    font-size: 12px;
     bottom: -40px;
-    background-color: var(--primary-color);
-    color: #333333;
+    color: var(--primary-color);
 }
 
 .thumbnailSeeking.chapters.sm.show {
-    bottom: 5.5rem;
+    bottom: 4rem;
 }
 
 .thumbnailSeeking.chapters.md.show {
-    bottom: 5.3rem;
+    bottom: 6.3rem;
 }
 
 .chapter-mark {
     position: absolute;
     height: 100%;
     width: 2px;
-    background-color: red;
     cursor: pointer;
 }
 

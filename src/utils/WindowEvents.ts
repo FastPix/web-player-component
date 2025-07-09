@@ -13,7 +13,16 @@ interface VideoPlayerContext {
 function WindowEvents(context: VideoPlayerContext) {
   window.addEventListener("resize", () => {
     resizeVideoWidth(context);
-    updateChapterMarkers(context);
+    if (context.video.readyState >= 1) {
+      updateChapterMarkers(context);
+    } else {
+      // Wait for metadata to be loaded before updating markers
+      context.video.addEventListener(
+        "loadedmetadata",
+        () => updateChapterMarkers(context),
+        { once: true }
+      );
+    }
 
     if (context.video.offsetWidth >= 471 && context.initialPlayClick) {
       context.playPauseButton.style.position = "absolute";

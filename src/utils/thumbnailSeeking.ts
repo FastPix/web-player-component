@@ -70,7 +70,7 @@ async function fetchThumbnailJson(
   try {
     let spritesheetUrl = `${spritesheetSrc}/${playbackId}/spritesheet.json`;
 
-    const token = context.getAttribute("token");
+    const token = context.token;
     if (token) {
       spritesheetUrl += `?token=${token}`;
     }

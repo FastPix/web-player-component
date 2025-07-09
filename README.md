@@ -18,7 +18,7 @@ This SDK simplifies HLS video playback by offering a wide range of customization
 
   - the `token` attribute is required to play private or DRM protected streams
 
-  - **Note:** The token can be empty for public streams
+  - **Note:** You can skip the token for public streams.
 
 - ## Inbuilt error handling:
 
@@ -64,7 +64,7 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
 
   - Customize playback with `default-playback-rate` and multiple `playback-rates` options for various speeds.
 
-  - Manage video quality with `min-resolution`, `max-resolution`, and `resolution` options, allowing either automated or controlled playback quality adjustments.
+  - Manage video quality with `min-resolution`, `max-resolution`, and `resolution` and `rendition-order` options, allowing either automated or controlled playback quality adjustments.
 
 - ## Aspect ratios:
 
@@ -73,6 +73,13 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
 - ## Hide and show controls:
 
   Flexibly hide or show specific player controls or all controls as needed, allowing for a customized viewing interface.
+
+- ## DRM Support:
+
+  FastPixPlayer supports DRM-encrypted playback using Widevine and FairPlay.  
+  To enable DRM, just follow the guide below and include both `token` (playback token) and `drm-token` (DRM license JWT) as attributes on the `<fastpix-player>` element.  
+
+  [Secure Playback with DRM – FastPix Documentation](https://docs.fastpix.io/docs/secure-playback-with-drm#/)
 
 - ## Fading controls:
 
@@ -117,6 +124,33 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
 - ## Chapters:
 
   - Add chapters to the video, allowing users to easily navigate to specific sections of the content. This feature enhances user engagement and makes it simpler for viewers to find relevant information.
+
+- ## DRM-Protected Playback in FastPixPlayer
+
+  - FastPixPlayer supports seamless playback of DRM-encrypted content using Widevine and FairPlay.  
+
+    To enable DRM playback, simply follow the setup instructions in our official documentation:
+
+   [Secure Playback with DRM – FastPix Documentation](https://docs.fastpix.io/docs/secure-playback-with-drm#/)
+
+- ### How to Use
+
+- After you’ve generated your **playback token** and **DRM token** (both are JWTs issued by your server), include them as attributes on your `<fastpix-player>` tag:
+
+- **`playback-id`** – your unique playback identifier
+- **`token`** – standard playback authorization token (JWT)
+- **`drm-token`** – DRM license token (JWT used for license decryption)
+
+---
+
+- ### Example
+
+   ```html
+      <fastpix-player
+        playback-id="YOUR-PLAYBACK-ID"
+        token="YOUR-PLAYBACK-TOKEN"
+        drm-token="YOUR-DRM-TOKEN">
+      </fastpix-player>
 
 - ## Title display:
 
@@ -623,70 +657,49 @@ The available keys are - `KeyK`, `KeyC`, `KeyF`, `KeyM`, `ArrowLeft`, `ArrowRigh
 
 The `chapters` feature lets you divide your video into sections, making navigation easier for users. Each chapter has a startTime, optional endTime, and a title. This is useful for allowing users to jump to specific parts of a video quickly.
 
-Below is a simple example of how to add chapters to the <fastpix-player> and listen for events like `timeupdate` and c`hapterchange`:
+For instructions on generating chapters with the API, please see our [FastPix-Dashboard](https://docs.fastpix.io/docs/generate-video-chapters).
+
+Below is a simple example of how to add chapters to the <fastpix-player> and listen for events like `timeupdate` and `chapterchange`:
 
 ```html
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const fpPlayerElement = document.querySelector('fastpix-player');
-
-    fpPlayerElement.addEventListener('timeupdate', (event) => {
-      const currentTime = fpPlayerElement.currentTime;
-      console.log('Current Time:', currentTime);
-    });
-
-    const chapters = [
-      { startTime: 0, endTime: 2, value: 'chapter-1' },
-      {
-        startTime: 4,
-        value: 'Chapter 2'
-      },
-      {
-        startTime: 5,
-        endTime: 6,
-        value: 'Chapter 3'
-      },
-    ];
-
-    function addChaptersToPlayer() {
-      if (fpPlayerElement && typeof fpPlayerElement.addChapters === 'function') {
-        fpPlayerElement.addChapters(chapters);
-      } else {
-        console.error('addChapters method not found on fpPlayerElement');
-      }
-    }
-
-    console.log("Source URL:", fpPlayerElement.currentSrc);
-    console.log("readyState:", fpPlayerElement.readyState);
-    console.log("buffered:", fpPlayerElement.buffered);
-
-    // Wait until the player has loaded some data to associate chapters
-    if (fpPlayerElement && fpPlayerElement.readyState >= 1) {
-      addChaptersToPlayer();
-    } else {
-      if (fpPlayerElement) {
-        fpPlayerElement.addEventListener('loadedmetadata', addChaptersToPlayer, { once: true });
-      } else {
-        console.error('fpPlayerElement not found');
-      }
-    }
-
-    if (fpPlayerElement) {
-      fpPlayerElement.addEventListener('chapterchange', () => {
-        console.log('Chapter change event detected');
-        console.log("Active Chapter:", fpPlayerElement.activeChapter());
-        console.log("Chapters:", fpPlayerElement.chapters);
-      });
-
-      fpPlayerElement.addEventListener('error', () => {
-        console.log('Error detected');
-        console.log("Active Chapter:", fpPlayerElement.activeChapter());
-      });
-    } else {
-      console.error('fpPlayerElement not found');
-    }
-  });
-</script>
+  <script>
+         document.addEventListener('DOMContentLoaded', () => {
+           const fpPlayerEl = document.querySelector('fastpix-player');
+           const generatedChaptersResponse = {
+             "chapters": [
+               {
+                 "chapter": "1",
+                 "startTime": "00:00:00",
+                 "title": "Introduction to Lifestyle",
+                 "summary": "Overview of lifestyle choices and their impact on well-being."
+               }
+             ]
+           }
+         
+           const Chapters = fpPlayerEl.convertChaptersToPlayerFormat(generatedChaptersResponse);
+      
+           function addChaptersToPlayer() {
+             if (fpPlayerEl && typeof fpPlayerEl.addChapters === 'function') {
+               fpPlayerEl.addChapters(Chapters);
+             } else {
+               console.error('sravani addChapters method not found on fpPlayerEl');
+             }
+           }
+    
+           if (fpPlayerEl && fpPlayerEl.readyState >= 3) {
+             addChaptersToPlayer();
+           } else if (fpPlayerEl) {
+             fpPlayerEl.addEventListener('loadedmetadata', addChaptersToPlayer, { once: true });
+           } else {
+             console.error('sravanifpPlayerEl not found');
+           }
+   
+           fpPlayerEl?.addEventListener('chapterchange', () => {
+             console.log('Chapter change event detected');
+             console.log('Active Chapter:', fpPlayerEl.activeChapter());
+           });
+         });
+       </script>
 ```
 
 With `convertOpenAIChapters` Method:
