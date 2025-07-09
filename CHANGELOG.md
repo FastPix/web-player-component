@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2025-07-09
+
+### DRM Support & Chapters updation
+
+- DRM support included
+- Chapters feature updated
+
 ## [1.0.3] - 2025-05-05
 
 ### Bug Fix
