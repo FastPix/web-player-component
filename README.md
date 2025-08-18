@@ -718,7 +718,7 @@ Below is a simple example of how to add chapters to the <fastpix-player> and lis
              if (fpPlayerEl && typeof fpPlayerEl.addChapters === 'function') {
                fpPlayerEl.addChapters(Chapters);
              } else {
-               console.error('sravani addChapters method not found on fpPlayerEl');
+               console.error('addChapters method not found on fpPlayerEl');
              }
            }
     

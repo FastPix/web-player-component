@@ -592,7 +592,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
     productSidebarConfig?: ShoppableSidebarConfig | null;
     products?: any[] | null;
   }) {
-    console.log("addShoppableData", shoppable);
     if (!shoppable || typeof shoppable !== "object") {
       console.warn("addShoppableData: invalid payload");
       return;
@@ -614,7 +613,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
       products: nextProducts,
     } as { productSidebarConfig: ShoppableSidebarConfig; products: any[] };
 
-    console.log("this.cartData", this.cartData);
     // Update flags driven by config
     this.showPostPlayOverlay = Boolean(
       this.cartData.productSidebarConfig?.showPostPlayOverlay
@@ -713,7 +711,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
    * Add a playlist JSON array (each item must have playbackId)
    */
   addPlaylist(playlistJson: any[]) {
-    console.log("addPlaylist", playlistJson);
     if (!Array.isArray(playlistJson)) return console.warn("Invalid playlist");
     this.playlist = playlistJson;
     this.currentIndex = 0;
@@ -745,7 +742,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
       this.currentIndex++;
       const nextItem = this.playlist[this.currentIndex];
       if (nextItem?.playbackId) {
-        console.log("nextItem", nextItem);
         this.loadByPlaybackId(nextItem.playbackId);
       }
     } else {
@@ -762,7 +758,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
       this.currentIndex--;
       const prevItem = this.playlist[this.currentIndex];
       if (prevItem?.playbackId) {
-        console.log("prevItem", prevItem);
         this.loadByPlaybackId(prevItem.playbackId);
       }
     } else {
