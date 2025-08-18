@@ -12,11 +12,33 @@ import {
 import { formatVideoDuration, isIOS } from "./index";
 import { getRemotePlaybackInstance } from "./ToggleController";
 
+let castScriptAdded = false;
+
 function loadCastAPI(): void {
+  // If Cast is already available (e.g., injected by extension or loaded once), skip
+  if ((window as any)?.cast?.framework) return;
+  if ((window as any).__fastpixCastLoading) return;
+  if (castScriptAdded) return;
+  if (
+    document.querySelector(
+      'script[src*="cast_sender.js"][data-fastpix-cast="true"]'
+    )
+  ) {
+    return;
+  }
+
   const script = document.createElement("script");
   script.src =
     "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
   script.async = true;
+  script.defer = true as any;
+  (script as any).dataset.fastpixCast = "true";
+  (window as any).__fastpixCastLoading = true;
+  castScriptAdded = true;
+  script.onload = () => {
+    // Mark as loaded; future calls will no-op
+    (window as any).__fastpixCastLoading = false;
+  };
   document.head.appendChild(script);
 }
 
@@ -139,7 +161,7 @@ function syncPlaybackWithChromecast(
 ) {
   const castContext = getCastContext();
   const SessionState = (window as any).cast.framework.SessionState;
-  let updateInterval: NodeJS.Timeout | null = null;
+  let updateInterval: number | null = null;
 
   castContext.addEventListener(
     (window as any).cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
@@ -160,8 +182,8 @@ function syncPlaybackWithChromecast(
           syncVolumeWithChromecast(safeVolume, isMuted);
           video.pause();
 
-          if (updateInterval) clearInterval(updateInterval);
-          updateInterval = setInterval(() => {
+          if (updateInterval) clearInterval(updateInterval as any);
+          updateInterval = window.setInterval(() => {
             const media = session?.getMediaSession();
             if (!media) {
               console.warn(
@@ -225,7 +247,7 @@ function syncPlaybackWithChromecast(
           playerContext.currentCastSession = null;
 
           if (updateInterval) {
-            clearInterval(updateInterval);
+            clearInterval(updateInterval as any);
             updateInterval = null;
           }
 

@@ -1,6 +1,14 @@
+// Add the following CSS to your stylesheet:
+// .playlistButtonVisible { display: inline-block; }
+// .playlistButtonHidden { display: none; }
 import { videoListeners } from "./utils/VideoListeners";
 import { KeyBoardInputManager } from "./utils/KeyboardHandler";
-import { toggleVideoPlayback } from "./utils/ToggleController";
+import {
+  playlistButtonClickHandler,
+  PlaylistNextButtonClickHandler,
+  PlaylistPrevButtonClickHandler,
+  toggleVideoPlayback,
+} from "./utils/ToggleController";
 import { WindowEvents } from "./utils/WindowEvents";
 import { initializeLazyLoadStream } from "./utils/LazyLoadingHandler";
 import { updateChapterMarkers } from "./utils/ChaptersHandlers";
@@ -17,8 +25,8 @@ import { fullScreenChangeHandler } from "./utils/FullScreenChangeHandler";
 import { customizeThumbnail } from "./utils/thumbnailSeeking";
 import { handleTitleContainer, hideMenus } from "./utils/DomVisibilityManager";
 import { hideDefaultSubtitlesStyles } from "./utils/SubtitleHandler";
-
 import {
+  configHls,
   handleHlsQualityAndTrackSetup,
   Hls,
   hlsListeners,
@@ -56,6 +64,22 @@ import {
 import { initializeAnalytics } from "./utils/IntegrateAnlytics";
 import { loadCastAPI, setupChromecast } from "./utils/CastHandler";
 
+import { PlaylistIcon } from "./icons/PlaylistIcon/index";
+import {
+  initializeShoppable,
+  populateSidebarProducts,
+} from "./utils/ShoppableVideo";
+import { resizeVideoWidth } from "./utils/ResizeVideo";
+import { initPlaylistControls } from "./utils/PlaylistHandler";
+
+// Shoppable types
+type ShoppableSidebarConfig = {
+  startState?: "openOnPlay" | "closed";
+  autoClose?: number;
+  bannerMessage?: string;
+  showPostPlayOverlay?: boolean;
+};
+
 class FastPixPlayer extends windowObject.HTMLElement {
   [x: string]: any;
   _readyState: number;
@@ -76,10 +100,13 @@ class FastPixPlayer extends windowObject.HTMLElement {
   initialPlayClick: boolean;
   isInitialLoad: boolean;
   videoEnded: boolean;
+  isError: boolean;
   currentSubtitleTrackIndex: number;
   chapters: any;
   _src: string | null;
   previousChapter: any;
+  playlist: any[] = [];
+  currentIndex: number = 0;
   retryButtonVisible: boolean;
   wrapper: HTMLElement;
   controlsContainer: HTMLElement;
@@ -145,29 +172,38 @@ class FastPixPlayer extends windowObject.HTMLElement {
   isiOS?: boolean;
   thumbnailUrlFinal?: string | null;
   shadowRoot!: ShadowRoot;
+  prevButton!: HTMLButtonElement;
+  nextButton!: HTMLButtonElement;
+  private playlistPanel!: HTMLDivElement;
+  private playlistButton!: HTMLButtonElement;
+  cartButton!: HTMLButtonElement;
+  cartSidebar!: HTMLDivElement;
+  isCartOpen: boolean = false;
+  showPostPlayOverlay: boolean;
+  cartGotoLink?: string;
+  isSidebarHovered: boolean = false;
+  private _initShoppableRequested: boolean = false;
+
+  // Track whether a hotspot is currently visible in the player
+  isHotspotVisible: boolean = false;
+  // Shoppable data container (defaults to empty config and products)
+  cartData: { productSidebarConfig: ShoppableSidebarConfig; products: any[] } =
+    {
+      productSidebarConfig: {},
+      products: [],
+    };
+  // Pending waitTillPause timeout (so we can set/clear it reliably)
+  hotspotPauseTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  updatePlaylistControlsVisibility!: () => void;
+  hasAutoClosedSidebar = false;
+  _lastActiveProductEl: HTMLDivElement | null = null;
 
   constructor() {
     super();
 
     this._readyState = 0;
-    this.config = {
-      maxMaxBufferLength: 120, // Extend max buffer length for high-quality streams
-      autoStartLoad: true,
-      debug: false,
-      enableWorker: false,
-      startLevel: 0, // Start at a middle-level quality (adjust as appropriate)
-      backBufferLength: 90,
-      emeEnabled: true,
-      lowLatencyMode: true,
-      capLevelToPlayerSize: true, // Automatically adjusts level to player size
-      abrEwmaFastLive: 2.0, // Tune ABR responsiveness for live content
-      abrEwmaSlowLive: 8.0,
-      abrMaxWithRealBitrate: true, // Use real bitrate for level switching
-      drmSystems: {
-        "com.widevine.alpha": {},
-        "com.apple.fps": {},
-      },
-    };
+    this.config = configHls;
     this.hls = new Hls(this.config);
     this.video = documentObject.createElement("video");
     this.resolutionFlagPause = false;
@@ -182,6 +218,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.wasManuallyPaused = false;
     this.video.controls = false;
     this.progressBarVisible = false;
+    this.isError = false;
     this.cache = new Map();
     this.initialPlayClick = false;
     this.defaultPlaybackRate = "1";
@@ -199,6 +236,9 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.previousChapter = null;
     this.retryButtonVisible = false;
     hideDefaultSubtitlesStyles(this);
+    this.showPostPlayOverlay = Boolean(
+      this.cartData.productSidebarConfig?.showPostPlayOverlay ?? false
+    );
     hlsListeners(this);
     this.wrapper = documentObject.createElement("div");
     this.wrapper.style.position = "relative";
@@ -222,6 +262,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.castButton.className = "castButton";
 
     subtileButtonClickHandler(this);
+
     this.retryButton = documentObject.createElement("button");
     this.retryButton.innerHTML = `<svg width="25%" height="25%" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 6V2L7 7L12 12V8C15.31 8 18 10.69 18 14C18 17.31 15.31 20 12 20C8.69 20 6 17.31 6 14H4C4 18.42 7.58 22 12 22C16.42 22 20 18.42 20 14C20 9.58 16.42 6 12 6Z" fill="currentColor"/>
         </svg>`;
@@ -260,7 +301,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.progressBar.step = "0.01";
     this.progressBarContainer.appendChild(this.progressBar);
     this.playPauseButton = documentObject.createElement("button");
-    this.playPauseButton.style.zIndex = "9";
+    this.playPauseButton.style.zIndex = "1500"; // Higher than hotspot z-index (1200)
     this.playPauseButton.style.position = "absolute";
     this.playPauseButton.classList.add("initialPlayBigButton");
     this.playPauseButton.classList.add("initialplayPauseButtonStyle");
@@ -395,6 +436,41 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.wrapper.appendChild(this.controlsContainer);
 
     this.wrapper.appendChild(this.subtitleContainer);
+
+    this.cartButton = documentObject.createElement("button");
+    this.cartButton.className = "cartButton";
+    this.cartButton.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M7 18c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2zm10 0c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2zM7.334 16h9.332c.822 0 1.542-.502 1.847-1.264l3.479-8.12A1 1 0 0 0 21 5H5.21l-.94-2.342A1 1 0 0 0 3.333 2H1a1 1 0 1 0 0 2h1.333l3.6 8.982-1.35 2.44C3.52 16.14 4.477 18 6 18h12a1 1 0 1 0 0-2H7.334z"/></svg>`;
+    this.cartButton.style.position = "absolute";
+    this.cartButton.style.top = "16px";
+    this.cartButton.style.right = "16px";
+    this.cartButton.style.zIndex = "1600";
+    this.cartButton.style.background = "#fff";
+    this.cartButton.style.borderRadius = "50%";
+    this.cartButton.style.boxShadow = "0 2px 8px rgba(0,0,0,0.10)";
+    this.cartButton.style.width = "40px";
+    this.cartButton.style.height = "40px";
+    this.cartButton.style.display = "flex";
+    this.cartButton.style.alignItems = "center";
+    this.cartButton.style.justifyContent = "center";
+    this.cartButton.style.border = "none";
+    this.cartButton.style.cursor = "pointer";
+    this.cartButton.style.opacity = "0.6";
+    this.cartGotoLink = this.getAttribute("product-link") || undefined;
+    this.cartButton.onclick = (e) => {
+      e.stopPropagation();
+      if (this.getAttribute("theme") === "shoppable-shorts") {
+        const goto = this.cartGotoLink || "https://www.fastpix.io";
+        window.open(goto, "_blank", "noopener,noreferrer");
+        return;
+      }
+      if (this.getAttribute("theme") === "shoppable-video-player") {
+        if (this.isCartOpen) {
+          this.closeCartSidebar();
+        } else {
+          this.openCartSidebar();
+        }
+      }
+    };
   }
   get readyState() {
     return this._readyState;
@@ -507,6 +583,63 @@ class FastPixPlayer extends windowObject.HTMLElement {
     updateChapterMarkers(this);
   }
 
+  /**
+   * Public API: Receive shoppable video data (like addChapters but for products).
+   * This merges config with existing defaults and replaces products when provided.
+   * It updates internal flags, repopulates the sidebar if it exists, and emits an event.
+   */
+  public addShoppableData(shoppable: {
+    productSidebarConfig?: ShoppableSidebarConfig | null;
+    products?: any[] | null;
+  }) {
+    console.log("addShoppableData", shoppable);
+    if (!shoppable || typeof shoppable !== "object") {
+      console.warn("addShoppableData: invalid payload");
+      return;
+    }
+
+    // Merge config without overriding unspecified keys
+    const nextConfig: ShoppableSidebarConfig = {
+      ...(this.cartData?.productSidebarConfig ?? {}),
+      ...(shoppable.productSidebarConfig ?? {}),
+    };
+
+    // Replace products only if provided
+    const nextProducts = Array.isArray(shoppable.products)
+      ? shoppable.products
+      : (this.cartData?.products ?? []);
+
+    this.cartData = {
+      productSidebarConfig: nextConfig,
+      products: nextProducts,
+    } as { productSidebarConfig: ShoppableSidebarConfig; products: any[] };
+
+    console.log("this.cartData", this.cartData);
+    // Update flags driven by config
+    this.showPostPlayOverlay = Boolean(
+      this.cartData.productSidebarConfig?.showPostPlayOverlay
+    );
+
+    // Initialize shoppable UI if appropriate and not yet initialized
+    const theme = this.getAttribute ? this.getAttribute("theme") : null;
+    if (
+      (theme === "shoppable-video-player" || theme === "shoppable-shorts") &&
+      !this._initShoppableRequested
+    ) {
+      initializeShoppable(this);
+    }
+
+    // Refresh UI (non-destructive): repopulate products list if sidebar exists
+    if (this.cartSidebar) {
+      populateSidebarProducts(this);
+    }
+
+    // Notify listeners (analytics/integrators)
+    this.dispatchEvent(
+      new CustomEvent("shoppabledatachange", { detail: this.cartData })
+    );
+  }
+
   activeChapter() {
     const currentTime = this.video.currentTime;
     const activeChapter = this.chapters.find(
@@ -576,6 +709,137 @@ class FastPixPlayer extends windowObject.HTMLElement {
     });
   }
 
+  /**
+   * Add a playlist JSON array (each item must have playbackId)
+   */
+  addPlaylist(playlistJson: any[]) {
+    console.log("addPlaylist", playlistJson);
+    if (!Array.isArray(playlistJson)) return console.warn("Invalid playlist");
+    this.playlist = playlistJson;
+    this.currentIndex = 0;
+    if (typeof this.updatePlaylistControlsVisibility === "function") {
+      this.updatePlaylistControlsVisibility();
+    }
+    // ✅ Use setProperty to hide or reset playPauseButton visibility
+    if (this.playPauseButton) {
+      if (this.playlist.length > 0) {
+        this.playPauseButton.style.setProperty("display", "flex");
+      } else {
+        this.playPauseButton.style.setProperty(
+          "display",
+          "var(--initial-play-button, flex)"
+        );
+      }
+    }
+    const current = this.playlist[this.currentIndex];
+    if (current?.playbackId) {
+      this.loadByPlaybackId(current.playbackId);
+    }
+  }
+
+  /**
+   * Go to the next video in the playlist
+   */
+  next() {
+    if (this.currentIndex < this.playlist.length - 1) {
+      this.currentIndex++;
+      const nextItem = this.playlist[this.currentIndex];
+      if (nextItem?.playbackId) {
+        console.log("nextItem", nextItem);
+        this.loadByPlaybackId(nextItem.playbackId);
+      }
+    } else {
+      console.info("End of playlist");
+    }
+    this.hasAutoClosedSidebar = false;
+  }
+
+  /**
+   * Go to the previous video in the playlist
+   */
+  previous() {
+    if (this.currentIndex > 0) {
+      this.currentIndex--;
+      const prevItem = this.playlist[this.currentIndex];
+      if (prevItem?.playbackId) {
+        console.log("prevItem", prevItem);
+        this.loadByPlaybackId(prevItem.playbackId);
+      }
+    } else {
+      console.info("Start of playlist");
+    }
+    this.hasAutoClosedSidebar = false;
+  }
+
+  /**
+   * Load video by new playbackId (without reloading page)
+   */
+  async loadByPlaybackId(playbackId: string) {
+    this.playbackId = playbackId;
+
+    const customDomain = this.getAttribute("custom-domain");
+    let playbackUrlFinal: string | null = null;
+    const isSupportedStream =
+      this.streamType === "on-demand" || this.streamType === "live-stream";
+    if (isSupportedStream) {
+      playbackUrlFinal = customDomain
+        ? `https://${customDomain}`
+        : "https://stream.fastpix.io";
+    }
+
+    if (this.drmToken) {
+      DrmSetup(this);
+    }
+
+    await setStreamUrl(
+      this,
+      playbackId,
+      this.token ?? null,
+      playbackUrlFinal ?? undefined,
+      this.streamType ?? null
+    );
+
+    this._src = getSRC();
+
+    this.video.src = this._src ?? "";
+    this.video.load();
+    this.video.addEventListener(
+      "canplay",
+      () => {
+        toggleVideoPlayback(
+          this,
+          this.playbackId ?? "",
+          this.thumbnailUrlFinal ?? "",
+          this.streamType ?? ""
+        );
+      },
+      { once: true }
+    );
+
+    // After load
+    this.dispatchEvent(
+      new CustomEvent("playbackidchange", {
+        detail: { playbackId },
+      })
+    );
+  }
+
+  /**
+   * Select and load an episode by playbackId (for external use)
+   */
+  public selectEpisodeByPlaybackId(playbackId: string) {
+    const index = this.playlist.findIndex(
+      (item) => item.playbackId === playbackId
+    );
+    if (index !== -1) {
+      this.currentIndex = index; // 🧠 update the internal pointer
+      this.loadByPlaybackId(playbackId);
+    } else {
+      console.warn("PlaybackId not found in current playlist");
+    }
+    this.hasAutoClosedSidebar = false;
+  }
+
   handleVideoEvent(event: { type: string }) {
     this.dispatchEvent(
       new CustomEvent(event.type, {
@@ -642,7 +906,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
       );
       if (!isSafari) {
         loadCastAPI();
-        if (this.castButton) {
+        if (this.castButton?.innerHTML?.trim()) {
           setupChromecast(this.castButton, this.video, this._src ?? "", this); // Initialize Chromecast functionality
         }
       }
@@ -666,7 +930,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
     configureForiOS(this);
     fullScreenChangeHandler(this);
 
-    this.playPauseButton.addEventListener("click", () => {
+    this.playPauseButton.addEventListener("click", (e) => {
+      e.stopImmediatePropagation(); // Prevent other handlers from blocking
       this.videoEnded = false;
       hideMenus(this);
       toggleVideoPlayback(
@@ -677,9 +942,48 @@ class FastPixPlayer extends windowObject.HTMLElement {
       );
     });
 
+    // Add a global click handler to ensure play/pause button always works
+    this.wrapper.addEventListener(
+      "click",
+      (e) => {
+        // If clicking on play/pause button, ensure it takes priority
+        if (
+          e.target === this.playPauseButton ||
+          this.playPauseButton.contains(e.target as Node)
+        ) {
+          e.stopImmediatePropagation();
+          this.videoEnded = false;
+          hideMenus(this);
+          toggleVideoPlayback(
+            this,
+            this.playbackId ?? "",
+            this.thumbnailUrlFinal ?? "",
+            this.streamType ?? ""
+          );
+        }
+      },
+      true
+    ); // Use capture phase to handle before other handlers
+
     const width = "100%";
     const height = "100%";
     this.loadStartTime = performance.now();
+
+    if (this.hasAttribute("autoplay-shorts")) {
+      this.video.load();
+      this.video.addEventListener(
+        "canplay",
+        () => {
+          toggleVideoPlayback(
+            this,
+            this.playbackId ?? "",
+            this.thumbnailUrlFinal ?? "",
+            this.streamType ?? ""
+          );
+        },
+        { once: true }
+      );
+    }
 
     if (this.playbackRatesAttribute !== null) {
       const parsedPlaybackRates = this.playbackRatesAttribute
@@ -724,18 +1028,46 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.playbackRateButton.textContent = `${this.defaultPlaybackRate}x`;
     this.playbackRateButton.className = "playbackRateButtonInitial";
 
+    this.playlistButton = documentObject.createElement("button");
+    this.playlistButton.innerHTML = PlaylistIcon;
+    this.playlistButton.className = "playlistButton";
+
+    // player.ts or inside connectedCallback/render
+    this.playlistPanel = document.createElement("div");
+    this.playlistPanel.className = "playlist-panel";
+    this.playlistPanel.style.maxHeight = "400px";
+    this.playlistPanel.style.display = "none"; // Initially hidden
+
+    // Create the header
+    const header = document.createElement("div");
+    header.className = "playlist-header";
+    header.textContent = "Episode List";
+
+    // Create the scrollable wrapper for playlist items
+    this.playlistItems = document.createElement("div");
+    this.playlistItems.className = "playlist-items-wrapper";
+
+    // Append header and scrollable list to panel
+    this.playlistPanel.appendChild(header);
+
+    // Add your styles (example in CSS section below)
+    this.playlistButton?.appendChild(this.playlistPanel); // or this.appendChild if not shadow DOM
+
     // playbackRateButton click handler
     playbackRateButtonClickHandler(this);
 
+    this.bottomRightDiv.appendChild(this.playlistButton);
     this.bottomRightDiv.appendChild(this.ccButton);
     this.bottomRightDiv.appendChild(this.playbackRateButton);
-    if (this.castButton) {
+    if (this.castButton?.innerHTML?.trim()) {
       this.bottomRightDiv.appendChild(this.castButton);
     }
     this.bottomRightDiv.appendChild(this.pipButton);
     this.bottomRightDiv.appendChild(this.fullScreenButton);
     this.bottomRightDiv.appendChild(this.subtitleMenu);
     this.bottomRightDiv.appendChild(this.playbackRateDiv);
+
+    playlistButtonClickHandler(this);
 
     // start-time attribute
     const startTime = parseFloat(this.startTimeAttribute) || 0;
@@ -787,11 +1119,250 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
     // restore volume settings
     restoreVolumeSettings(this);
+    // initialize playlist controls via helper (uses context instead of this)
+    initPlaylistControls(this);
+    PlaylistNextButtonClickHandler(this);
+    PlaylistPrevButtonClickHandler(this);
+
+    // Initialize shoppable UI if theme is set
+    const theme = this.getAttribute ? this.getAttribute("theme") : null;
+    if (theme === "shoppable-video-player" || theme === "shoppable-shorts") {
+      initializeShoppable(this);
+
+      // Ensure cart button is visible for shoppable-shorts
+      if (theme === "shoppable-shorts") {
+        setTimeout(() => {
+          this.ensureShoppableShortsCartButton();
+        }, 100);
+      }
+    }
   }
 
   disconnectedCallback() {
     this.wrapper.removeChild(this.video);
     this.hls?.destroy();
+  }
+
+  static get observedAttributes() {
+    return ["theme"];
+  }
+
+  attributeChangedCallback(
+    name: string,
+    oldValue: string | null,
+    newValue: string | null
+  ) {
+    if (
+      name === "theme" &&
+      newValue &&
+      (newValue === "shoppable-video-player" || newValue === "shoppable-shorts")
+    ) {
+      // Re-initialize shoppable when theme changes
+      this._initShoppableRequested = false;
+      initializeShoppable(this);
+    }
+  }
+
+  // Helper methods
+  openCartSidebar = () => {
+    // Close any open menus before opening the cart sidebar
+    try {
+      if (
+        this.playbackRateDiv &&
+        this.playbackRateDiv.style?.display !== "none"
+      ) {
+        this.playbackRateDiv.style.display = "none";
+      }
+      if (
+        this.resolutionMenu &&
+        this.resolutionMenu.style?.display !== "none"
+      ) {
+        this.resolutionMenu.style.display = "none";
+      }
+      if (this.subtitleMenu && this.subtitleMenu.style?.display !== "none") {
+        this.subtitleMenu.style.display = "none";
+      }
+      if (this.audioMenu && this.audioMenu.style?.display !== "none") {
+        this.audioMenu.style.display = "none";
+      }
+    } catch (e) {
+      console.error("Failed to open cart sidebar:", e);
+    }
+    if (!this.cartSidebar) return;
+    this.cartSidebar.style.display = "flex";
+    const _ = this.cartSidebar.offsetWidth;
+    this.cartSidebar.style.width = "var(--shoppable-sidebar-width)";
+    this.isCartOpen = true;
+    this.cartButton.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12l-4.89 4.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"/></svg>`;
+    this.progressBar.classList.add("cartSidebarOpen-progress-bar");
+    this.bottomRightDiv.classList.add("cartSidebarOpen-bottom-right-div");
+    this.dispatchEvent(
+      new CustomEvent("productBarMax", { detail: { opened: true } })
+    );
+    resizeVideoWidth(this); // re-apply visibility
+  };
+
+  closeCartSidebar = () => {
+    this.cartSidebar.style.width = "0";
+    this.cartSidebar.style.display = "none";
+    this.isCartOpen = false;
+    this.cartButton.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M7 18c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2zm10 0c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2zM7.334 16h9.332c.822 0 1.542-.502 1.847-1.264l3.479-8.12A1 1 0 0 0 21 5H5.21l-.94-2.342A1 1 0 0 0 3.333 2H1a1 1 0 1 0 0 2h1.333l3.6 8.982-1.35 2.44C3.52 16.14 4.477 18 6 18h12a1 1 0 1 0 0-2H7.334z"/></svg>`;
+    this.progressBar.classList.remove("cartSidebarOpen-progress-bar");
+    this.bottomRightDiv.classList.remove("cartSidebarOpen-bottom-right-div");
+
+    // Clear the right property when sidebar is closed
+    if (this.bottomRightDiv) {
+      this.bottomRightDiv.style.right = "";
+    }
+
+    this.dispatchEvent(
+      new CustomEvent("productBarMin", { detail: { opened: false } })
+    );
+    resizeVideoWidth(this); // restore time/volume
+  };
+
+  // Debug method to force show cart button
+  showCartButton = () => {
+    if (this.cartButton) {
+      this.cartButton.style.display = "flex";
+      this.cartButton.style.visibility = "visible";
+      this.cartButton.style.opacity = "1";
+    }
+  };
+
+  // Method to ensure cart button is visible for shoppable-shorts
+  ensureShoppableShortsCartButton = () => {
+    const theme = this.getAttribute ? this.getAttribute("theme") : null;
+    if (theme === "shoppable-shorts" && this.cartButton) {
+      this.cartButton.style.display = "flex";
+      this.cartButton.style.visibility = "visible";
+      this.cartButton.style.opacity = "1";
+      this.cartButton.style.position = "absolute";
+      this.cartButton.style.top = "16px";
+      this.cartButton.style.right = "16px";
+      this.cartButton.style.zIndex = "1600";
+    }
+  };
+
+  // Ensure hotspot never exceeds player bounds even if marker >100% or <0%
+  positionHotspot(
+    spot: HTMLDivElement,
+    xPercent: number,
+    yPercent: number,
+    container?: HTMLElement
+  ) {
+    const ref = container ?? this.wrapper;
+    const wrapperWidth = ref?.clientWidth || ref?.offsetWidth || 0;
+    const wrapperHeight = ref?.clientHeight || ref?.offsetHeight || 0;
+    const spotWidth = 32;
+    const spotHeight = 32;
+
+    // Clamp incoming percentages to [0, 100]
+    const safeX = Math.min(Math.max(Number(xPercent) || 0, 0), 100);
+    const safeY = Math.min(Math.max(Number(yPercent) || 0, 0), 100);
+
+    // If we can't measure, clamp percent and use %
+    if (!wrapperWidth || !wrapperHeight) {
+      spot.style.left = `${safeX}%`;
+      spot.style.top = `${safeY}%`;
+      return;
+    }
+
+    // Calculate the center position of the hotspot
+    const centerX = (safeX / 100) * wrapperWidth;
+    const centerY = (safeY / 100) * wrapperHeight;
+
+    // Calculate the top-left position by subtracting half the spot dimensions
+    const left = centerX - spotWidth / 2;
+    const top = centerY - spotHeight / 2;
+
+    // Clamp to ensure the hotspot stays within bounds
+    const clampedLeft = Math.max(
+      0,
+      Math.min(wrapperWidth - spotWidth, Math.round(left))
+    );
+    const clampedTop = Math.max(
+      0,
+      Math.min(wrapperHeight - spotHeight, Math.round(top))
+    );
+
+    spot.style.left = `${clampedLeft}px`;
+    spot.style.top = `${clampedTop}px`;
+  }
+
+  // Helpers to reduce nesting
+  private removeAllHotspots(): void {
+    try {
+      this.wrapper?.querySelectorAll(".hotspot").forEach((el) => el.remove());
+      this.isHotspotVisible = false;
+    } catch (e) {
+      console.error("Failed to remove all hotspots:", e);
+    }
+  }
+
+  private buildHotspot(
+    marker: any,
+    productName: string,
+    zIndex: string = "1200"
+  ): HTMLDivElement {
+    const spot = documentObject.createElement("div");
+    spot.className = "hotspot";
+    spot.style.position = "absolute";
+    spot.style.width = "32px";
+    spot.style.height = "32px";
+    spot.style.cursor = "pointer";
+    spot.style.zIndex = zIndex;
+
+    // Store the original percentage values for repositioning during resize
+    spot.dataset.xPercent = String(marker.x);
+    spot.dataset.yPercent = String(marker.y);
+
+    this.positionHotspot(spot, Number(marker.x), Number(marker.y));
+    const dot = documentObject.createElement("div");
+    dot.className = "hotspot-dot";
+    spot.appendChild(dot);
+    const tooltip = documentObject.createElement("div");
+    tooltip.className = "hotspot-tooltip";
+    tooltip.innerText = String(productName ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    tooltip.style.position = "absolute";
+    tooltip.style.whiteSpace = "nowrap";
+    tooltip.style.background = "#222";
+    tooltip.style.color = "#fff";
+    tooltip.style.padding = "6px 12px";
+    tooltip.style.borderRadius = "6px";
+    tooltip.style.fontSize = "0.95em";
+    tooltip.style.pointerEvents = "none";
+    tooltip.style.opacity = "0";
+    tooltip.style.transition = "opacity 0.2s";
+    switch (marker?.tooltipPosition) {
+      case "left":
+        tooltip.style.right = "110%";
+        tooltip.style.top = "50%";
+        tooltip.style.transform = "translateY(-50%)";
+        break;
+      case "right":
+        tooltip.style.left = "110%";
+        tooltip.style.top = "50%";
+        tooltip.style.transform = "translateY(-50%)";
+        break;
+      case "top":
+        tooltip.style.left = "50%";
+        tooltip.style.bottom = "110%";
+        tooltip.style.transform = "translateX(-50%)";
+        break;
+      case "bottom":
+      default:
+        tooltip.style.left = "50%";
+        tooltip.style.top = "110%";
+        tooltip.style.transform = "translateX(-50%)";
+        break;
+    }
+    spot.appendChild(tooltip);
+    spot.onmouseenter = () => (tooltip.style.opacity = "1");
+    spot.onmouseleave = () => (tooltip.style.opacity = "0");
+    return spot;
   }
 }
 

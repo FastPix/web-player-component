@@ -77,14 +77,17 @@ async function fetchThumbnailJson(
 
     const response = await fetch(spritesheetUrl);
     if (!response.ok) {
-      throw new Error(`HTTP error! Status: ${response.status}`);
+      console.warn(
+        `Failed to fetch spritesheet: HTTP ${response.status} for ${spritesheetUrl}`
+      );
+      return null;
     }
 
     const thumbnailJson: ThumbnailJson = await response.json();
     context.spritesheetCache[playbackId] = thumbnailJson;
     return thumbnailJson;
   } catch (error) {
-    console.warn("Error fetching spritesheet JSON:", error);
+    console.error("Error fetching spritesheet:", error);
     return null;
   }
 }

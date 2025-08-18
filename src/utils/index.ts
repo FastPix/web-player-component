@@ -88,7 +88,7 @@ const videoEvents: string[] = [
   "seeking",
   "stalled",
   "suspend",
-  // "timeupdate",
+  "timeupdate",
   "volumechange",
   "waiting",
   "encrypted",
@@ -367,6 +367,53 @@ function isIOS(context: any): boolean {
   return isiOS; // Returning the result
 }
 
+function renderPlaylistPanel(context: any) {
+  if (!Array.isArray(context.playlist)) return;
+
+  context.playlistPanel.innerHTML = ""; // Clear before render
+
+  context.playlist.forEach((ep, idx) => {
+    const item = document.createElement("div");
+    item.className = "playlist-item";
+    if (ep.playbackId === context.playbackId) {
+      item.classList.add("selected");
+    }
+
+    // Thumbnail
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
+    thumb.style.backgroundImage = `url('${ep.thumbnail}')`;
+
+    // Info container
+    const info = document.createElement("div");
+    info.className = "info";
+
+    const title = document.createElement("div");
+    title.className = "playlist-title";
+    title.textContent = ep.title;
+
+    info.appendChild(title);
+
+    // Conditionally add duration
+    if (ep.duration) {
+      const duration = document.createElement("div");
+      duration.className = "playlist-item-duration";
+      duration.textContent = ep.duration;
+      info.appendChild(duration);
+    }
+
+    item.appendChild(thumb);
+    item.appendChild(info);
+
+    item.addEventListener("click", () => {
+      context.selectEpisodeByPlaybackId(ep.playbackId);
+      context.playlistPanel.style.display = "none";
+    });
+
+    context.playlistPanel.appendChild(item);
+  });
+}
+
 // Wrapper functions for live and on-demand streams
 const fetchStreamWithTokenOnDemand = (
   context: Context,
@@ -570,6 +617,8 @@ function receiveAttributes(context: any) {
   context.controlsContainerValue = updateControlsVisibility(context);
   context.hideControlAttr = context.hasAttribute("hide-controls");
 
+  context.loopPlaylistTillEnd = context.hasAttribute("autoplay-next");
+
   context.token = context.getAttribute("token");
   context.drmToken = context.getAttribute("drm-token");
   context.playbackId = context.getAttribute("playback-id");
@@ -638,11 +687,11 @@ function receiveAttributes(context: any) {
 function DrmSetup(context: any) {
   // Set up drmSystems config before creating Hls
   context.config.drmSystems["com.widevine.alpha"].licenseUrl =
-    `https://api.fastpix.io/v1/on-demand/drm/license/widevine/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.app/v1/on-demand/drm/license/widevine/${context.playbackId}?token=${context.drmToken}`;
   context.config.drmSystems["com.apple.fps"].licenseUrl =
-    `https://api.fastpix.io/v1/on-demand/drm/license/fairplay/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.app/v1/on-demand/drm/license/fairplay/${context.playbackId}?token=${context.drmToken}`;
   context.config.drmSystems["com.apple.fps"].serverCertificateUrl =
-    `https://api.fastpix.io/v1/on-demand/drm/cert/fairplay/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.app/v1/on-demand/drm/cert/fairplay/${context.playbackId}?token=${context.drmToken}`;
 }
 
 export {
@@ -657,5 +706,6 @@ export {
   isChromeBrowser,
   isIOS,
   getSyncedCurrentTime,
+  renderPlaylistPanel,
   getSRC,
 };

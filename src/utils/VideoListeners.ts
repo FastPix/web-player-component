@@ -35,6 +35,7 @@ import {
   seekChromecastProgressbar,
   syncVolumeWithChromecast,
 } from "./CastHandler";
+import { hideError } from "./ErrorElement";
 
 // connectedCallback
 const videoListeners = (context: any) => {
@@ -42,7 +43,13 @@ const videoListeners = (context: any) => {
     context.isWaitingForKey = false;
     context.video.addEventListener("loadedmetadata", () => {
       if (!isChromeBrowser()) {
-        context.bottomRightDiv.removeChild(context.castButton);
+        if (
+          context.castButton &&
+          context.bottomRightDiv &&
+          context.castButton.parentElement === context.bottomRightDiv
+        ) {
+          context.bottomRightDiv.removeChild(context.castButton);
+        }
       }
       preloadSubtitles(context);
       const tracksArray = Array.from(context.video.textTracks);
@@ -82,6 +89,25 @@ const videoListeners = (context: any) => {
       }
     });
 
+    context.addEventListener("playbackidchange", (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const newPlaybackId = customEvent.detail.playbackId;
+
+      // Remove previous selection
+      context.playlistPanel
+        ?.querySelectorAll(".playlist-item.selected")
+        .forEach((el: any) => el.classList.remove("selected"));
+
+      // Add new selection
+      const newSelected = context.playlistPanel?.querySelector(
+        `[data-playback-id="${newPlaybackId}"]`
+      );
+      if (newSelected) {
+        newSelected.classList.add("selected");
+        newSelected.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+
     context.video.addEventListener("pause", () => {
       if (isChromecastConnected()) {
         controlCastMedia("pause", context);
@@ -89,6 +115,8 @@ const videoListeners = (context: any) => {
         context.playPauseButton.innerHTML = PlayIcon;
         context.wasManuallyPaused = true;
       }
+      // Always allow user to click play/pause while paused (e.g., during hotspot wait)
+      context.playPauseButton.disabled = false;
     });
 
     context.video.addEventListener("play", () => {
@@ -98,16 +126,45 @@ const videoListeners = (context: any) => {
         context.playPauseButton.innerHTML = PauseIcon;
         context.wasManuallyPaused = false;
       }
+
+      // Remove any visible hotspots on play and clear pending hotspot timers
+      const hotspots = context.wrapper?.querySelectorAll(".hotspot");
+      if (hotspots && hotspots.length > 0) {
+        hotspots.forEach((el: any) => el.remove());
+        context.isHotspotVisible = false;
+      }
+      if (context.hotspotPauseTimeout) {
+        clearTimeout(context.hotspotPauseTimeout);
+        context.hotspotPauseTimeout = null;
+      }
     });
 
     context.video.addEventListener("waiting", () => {
       context.isLoading = true;
       context.isBuffering = true;
       showLoader(context);
-      context.playPauseButton.disabled = true;
+      // Do NOT disable play/pause button; allow user to interrupt buffering/hotspot waits
+      context.playPauseButton.disabled = false;
+    });
+
+    context.video.addEventListener("loadstart", () => {
+      const autoplayEnabled =
+        context.hasAttribute("autoplay-shorts") ||
+        context.hasAttribute("auto-play") ||
+        context.hasAttribute("autoplay");
+      const controlsDisplay = window.getComputedStyle(
+        context.controlsContainer
+      ).display;
+
+      if (autoplayEnabled && controlsDisplay === "none") {
+        showLoader(context);
+      }
     });
 
     context.video.addEventListener("playing", () => {
+      if (context.isError) {
+        hideError(context);
+      }
       if (!context.video.paused && context.video.readyState >= 2) {
         hideLoader(context);
       }
@@ -122,6 +179,16 @@ const videoListeners = (context: any) => {
       if (context.pauseAfterLoading && !context.resolutionSwitching) {
         context.video.pause();
         context.pauseAfterLoading = false;
+      }
+
+      // If Safari autoplay start-then-pause is requested, pause immediately after first play
+      if (context._autoPlayStartAndPause) {
+        context._autoPlayStartAndPause = false;
+        try {
+          context.video.pause();
+        } catch (e) {
+          console.error("Failed to pause video:", e);
+        }
       }
     });
 
@@ -146,9 +213,21 @@ const videoListeners = (context: any) => {
       context.video.addEventListener("timeupdate", updateTimeDisplay(context));
 
       if (context.hasAutoPlayAttribute === true) {
+        const isSafari = /^((?!chrome|android).)*safari/i.test(
+          navigator.userAgent
+        );
+        // Ensure inline muted autoplay compatibility on Safari/iOS
+        context.video.setAttribute("playsinline", "");
+        context.video.setAttribute("webkit-playsinline", "");
+        context.video.playsInline = true;
         context.video.muted = true;
         context.video.autoplay = true;
         context.video.volume = 0;
+
+        if (isSafari) {
+          context._autoPlayStartAndPause = true;
+        }
+
         toggleVideoPlayback(
           context,
           context.playbackId,
@@ -256,6 +335,10 @@ const videoListeners = (context: any) => {
         context.video.play();
         context.videoEnded = false;
       });
+
+      if (context.loopPlaylistTillEnd) {
+        context.next();
+      }
     });
 
     // Listen for progressbar input changes

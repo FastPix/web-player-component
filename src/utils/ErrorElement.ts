@@ -2,6 +2,8 @@ import { documentObject } from "./CustomElements";
 import { hideAllControls, showAllControls } from "./DomVisibilityManager";
 
 function showError(context: any, errorMessage: string): void {
+  context.isError = true;
+  console.log("showError", context.isError);
   // Check if an error is already displayed
   if (context.wrapper.querySelector(".errorContainer")) {
     return;
@@ -41,7 +43,8 @@ function showError(context: any, errorMessage: string): void {
 
 function hideError(context: any): void {
   const errorDiv = context.wrapper.querySelector(".errorContainer");
-
+  context.isError = false;
+  console.log("hideError", context.isError);
   if (errorDiv) {
     context.wrapper.removeChild(errorDiv);
 

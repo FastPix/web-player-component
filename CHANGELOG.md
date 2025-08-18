@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.5] - 2025-08-18
+
+### New Feature: Shoppable Video Support
+
+- **Shoppable Video Player Theme**: Introduced `shoppable-video-player` theme with full-featured product sidebar, interactive hotspots, and comprehensive product catalog functionality
+- **Shoppable Shorts Theme**: Added `shoppable-shorts` theme for simplified external link integration optimized for social media and mobile-first content
+- **Product Integration**: Support for product data configuration with hover effects, click actions, and time-based product activation
+- **Interactive Hotspots**: Clickable markers on video timeline that link to specific products
+- **Post-Play Overlay**: Product carousel that appears when video ends to encourage continued engagement
+- **Responsive Design**: Cart button and sidebar adapt to different screen sizes with theme-specific visibility rules
+- **Developer Documentation**: Comprehensive developer guide with configuration examples, troubleshooting section, and best practices
+
 ## [1.0.4] - 2025-07-09
 
 ### DRM Support & Chapters updation

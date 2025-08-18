@@ -12,17 +12,22 @@ import { documentObject } from "./CustomElements.js";
 import { isChromecastConnected } from "./CastHandler.js";
 
 const configHls: Partial<Hls.HlsConfig> = {
-  maxMaxBufferLength: 30,
+  maxMaxBufferLength: 120, // Extend max buffer length for high-quality streams
   autoStartLoad: true,
+  debug: false,
   enableWorker: false,
-  startLevel: 0,
+  startLevel: 0, // Start at a middle-level quality (adjust as appropriate)
   backBufferLength: 90,
   emeEnabled: true,
   lowLatencyMode: true,
-  capLevelToPlayerSize: true,
-  abrEwmaFastLive: 2.0,
+  capLevelToPlayerSize: true, // Automatically adjusts level to player size
+  abrEwmaFastLive: 2.0, // Tune ABR responsiveness for live content
   abrEwmaSlowLive: 8.0,
-  abrMaxWithRealBitrate: true,
+  abrMaxWithRealBitrate: true, // Use real bitrate for level switching
+  drmSystems: {
+    "com.widevine.alpha": {},
+    "com.apple.fps": {},
+  },
 };
 
 const hlsInstance: Hls | null = null;
@@ -170,8 +175,6 @@ function setupErrorHandling(context: any, streamType: string | null) {
   context.hls.on(
     Hls.Events.ERROR,
     (data: { details: any; type?: any; fatal?: any }, event: any) => {
-      console.error("Fatal Hls error:", Hls.ErrorDetails);
-
       // Check for fatal errors
       if (event.fatal) {
         console.error("Fatal Hls error DD:", event.details);
@@ -317,6 +320,14 @@ function handleHlsQualityAndTrackSetup(context: any) {
 }
 
 function setupResolutionUI(context: any, levels: any) {
+  // Clear previous resolution buttons to avoid duplicates
+  if (context.resolutionMenu) {
+    while (context.resolutionMenu.firstChild) {
+      context.resolutionMenu.removeChild(context.resolutionMenu.firstChild);
+    }
+  }
+  context.resolutionButtons = [];
+
   let levelsArray = levels.map((item: { height: any }) => item.height);
 
   if (levelsArray[0] === 0) {
@@ -430,6 +441,12 @@ function setupSubtitleButton(context: any, subtitleTracks: any) {
 }
 
 function setupResolutionMenuButton(context: any) {
+  // Remove any previous click listeners to avoid duplicates
+  const newButton = context.resolutionMenuButton;
+  const oldButton = newButton.cloneNode(true);
+  newButton.parentNode.replaceChild(oldButton, newButton);
+  context.resolutionMenuButton = oldButton;
+
   context.resolutionMenuButton.addEventListener("click", () => {
     if (context.playbackRateDiv.style.display !== "none")
       togglePlaybackRateButtons(context);

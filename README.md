@@ -156,6 +156,42 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
 
   - The `title` attribute allows you to set a title for the video, enhancing context and providing additional information to viewers.
 
+- ## Shoppable Video Support:
+
+  - **Interactive Product Integration**: Transform your videos into shopping experiences with clickable products, interactive hotspots, and product catalogs.
+
+  - **Two Theme Options**:
+    - **`shoppable-video-player`**: Full-featured sidebar with product catalog, hotspots, and post-play overlay
+    - **`shoppable-shorts`**: Simplified external link integration for social media and mobile-first content
+
+  - **Product Features**:
+    - Interactive product sidebar with thumbnails and descriptions
+    - Clickable hotspots on video timeline
+    - Product hover overlays and image swaps
+    - Post-play product carousel
+    - Time-based product activation
+    - Responsive design across all devices
+
+  - **Quick Setup**:
+    ```html
+    <!-- For full-featured experience -->
+    <fastpix-player 
+      theme="shoppable-video-player"
+      playback-id="your-playback-id">
+    </fastpix-player>
+
+    <!-- For simplified social media integration -->
+    <fastpix-player 
+      theme="shoppable-shorts"
+      product-link="https://your-store.com"
+      playback-id="your-playback-id">
+    </fastpix-player>
+    ```
+
+  - **Event Tracking**: Listen to product interactions, sidebar state changes, and post-play engagement events for analytics integration.
+
+  For detailed implementation guide, see [Shoppable Video Developer Guide](SHOPPABLE_VIDEO_DEVELOPER_GUIDE.md).
+
 # Prerequisites:
 
 ## Getting started with FastPix:
@@ -682,7 +718,7 @@ Below is a simple example of how to add chapters to the <fastpix-player> and lis
              if (fpPlayerEl && typeof fpPlayerEl.addChapters === 'function') {
                fpPlayerEl.addChapters(Chapters);
              } else {
-               console.error('addChapters method not found on fpPlayerEl');
+               console.error('sravani addChapters method not found on fpPlayerEl');
              }
            }
     
@@ -691,7 +727,7 @@ Below is a simple example of how to add chapters to the <fastpix-player> and lis
            } else if (fpPlayerEl) {
              fpPlayerEl.addEventListener('loadedmetadata', addChaptersToPlayer, { once: true });
            } else {
-             console.error('fpPlayerEl not found');
+             console.error('sravanifpPlayerEl not found');
            }
    
            fpPlayerEl?.addEventListener('chapterchange', () => {

@@ -10,7 +10,7 @@ import {
   showLoader,
 } from "./DomVisibilityManager";
 import { getCastContext, isChromecastAvailable } from "./CastHandler";
-import { isIOS } from "./index";
+import { isIOS, renderPlaylistPanel } from "./index";
 
 interface Track {
   mode: string;
@@ -175,7 +175,7 @@ function localPlayerLogic(
   initializeControlsAfterPlayClick(context);
   if (context.isLoading) return;
   if (context.video.paused) {
-    if (!context.initialPlayClick || context.video.autoplay) {
+    if (!context.initialPlayClick) {
       showLoader(context);
       hideInitControls(context);
     }
@@ -242,6 +242,29 @@ function localPlayerLogic(
         context.thumbnailUrlFinal,
         streamType
       );
+    }
+  });
+}
+
+function PlaylistNextButtonClickHandler(context: any) {
+  context.nextButton.addEventListener("click", () => {
+    context.next();
+  });
+}
+
+function PlaylistPrevButtonClickHandler(context: any) {
+  context.prevButton.addEventListener("click", () => {
+    context.previous();
+  });
+}
+
+function playlistButtonClickHandler(context: any) {
+  context.playlistButton.addEventListener("click", () => {
+    const isVisible = context.playlistPanel.style.display === "block";
+    context.playlistPanel.style.display = isVisible ? "none" : "block";
+
+    if (!isVisible) {
+      renderPlaylistPanel(context); // only refresh when opening
     }
   });
 }
@@ -376,9 +399,12 @@ export {
   toggleVideoPlayback,
   toggleSubtitlesMenu,
   getRemotePlaybackInstance,
+  PlaylistPrevButtonClickHandler,
   initializeControlsAfterPlayClick,
   storeSubtitleLanguage,
   getStoredSubtitleLanguage,
   switchSubtitleTrackOnChromecast,
+  PlaylistNextButtonClickHandler,
+  playlistButtonClickHandler,
   hideShowSubtitlesMenu,
 };
