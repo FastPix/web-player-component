@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.6] - 2025-08-19
+
+ - Removed unnecessary console logs
+
+
 ## [1.0.5] - 2025-08-18
 
 ### New Feature: Shoppable Video Support
