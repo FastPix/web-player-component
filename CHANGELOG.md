@@ -2,10 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.7] - 2025-09-04
+
+- Fixed "OpenOnPlay" and "autoClose" issue for shoppable-video-player theme
+
 ## [1.0.6] - 2025-08-19
 
  - Removed unnecessary console logs
-
 
 ## [1.0.5] - 2025-08-18
 
