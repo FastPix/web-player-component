@@ -566,35 +566,70 @@ function populateSidebarProducts(context: any) {
 }
 
 function wireAutoOpenClose(context: any) {
-  if (
-    context.cartData.productSidebarConfig?.startState === "openOnPlay" &&
-    context.getAttribute("theme") === "shoppable-video-player"
-  ) {
-    context.video.addEventListener("play", () => {
+  const isShoppable =
+    context.getAttribute("theme") === "shoppable-video-player";
+  const wantsOpenOnPlay =
+    context.cartData.productSidebarConfig?.startState === "openOnPlay";
+
+  if (isShoppable && wantsOpenOnPlay) {
+    const openOnce = () => {
+      if (context._openOnPlayDone) return;
       if (!context.hasAutoClosedSidebar) context.openCartSidebar();
-    });
+      context._openOnPlayDone = true;
+    };
+
+    if (
+      context.video &&
+      !context.video.paused &&
+      context.video.readyState >= 2
+    ) {
+      setTimeout(openOnce, 0);
+    } else {
+      context.video.addEventListener("playing", openOnce, { once: true });
+      context.video.addEventListener("play", openOnce, { once: true });
+      const onTU = () => {
+        if ((context.video?.currentTime || 0) > 0) {
+          openOnce();
+          context.video.removeEventListener("timeupdate", onTU);
+        }
+      };
+      context.video.addEventListener("timeupdate", onTU);
+    }
   }
 
-  if (
-    typeof context.cartData.productSidebarConfig?.autoClose === "number" &&
-    context.getAttribute("theme") === "shoppable-video-player"
-  ) {
-    context.video.addEventListener("timeupdate", () => {
-      if (
-        context.isCartOpen &&
-        !context.hasAutoClosedSidebar &&
-        context.video.currentTime >=
-          (context.cartData.productSidebarConfig.autoClose ??
-            Number.POSITIVE_INFINITY) &&
-        !context.isSidebarHovered
-      ) {
-        context.closeCartSidebar();
-        context.hasAutoClosedSidebar = true;
-      }
-      // Also update highlights during playback
-      updateSidebarProductHighlights(context);
-    });
-  }
+  if (!isShoppable) return;
+
+  try {
+    if (context._openCloseTUHandler) {
+      context.video.removeEventListener(
+        "timeupdate",
+        context._openCloseTUHandler
+      );
+    }
+  } catch {}
+
+  const autoCloseSeconds =
+    typeof context.cartData.productSidebarConfig?.autoClose === "number"
+      ? Number(context.cartData.productSidebarConfig.autoClose)
+      : null;
+
+  const handler = () => {
+    updateSidebarProductHighlights(context);
+
+    if (
+      autoCloseSeconds !== null &&
+      context.isCartOpen &&
+      !context.hasAutoClosedSidebar &&
+      (context.video?.currentTime ?? 0) >= autoCloseSeconds &&
+      !context.isSidebarHovered
+    ) {
+      context.closeCartSidebar();
+      context.hasAutoClosedSidebar = true;
+    }
+  };
+
+  context._openCloseTUHandler = handler;
+  context.video.addEventListener("timeupdate", handler);
 }
 
 function bindEndedOverlay(context: any) {
@@ -648,10 +683,19 @@ function initializeShoppable(context: any) {
     populateSidebarProducts(context);
     wireAutoOpenClose(context);
     bindEndedOverlay(context);
-    // Keep highlights in sync even if no autoClose configured
-    context.video.addEventListener("timeupdate", () => {
-      updateSidebarProductHighlights(context);
-    });
+    // Highlights handled by wireAutoOpenClose's timeupdate handler
+
+    // Re-arm wiring when shoppable data changes (data may arrive after init)
+    try {
+      context.addEventListener("shoppabledatachange", () => {
+        try {
+          context._openOnPlayDone = false;
+          context.hasAutoClosedSidebar = false;
+        } catch {}
+        wireAutoOpenClose(context);
+        if (context.cartSidebar) populateSidebarProducts(context);
+      });
+    } catch {}
   } else if (theme === "shoppable-shorts") {
     bindCartButtonToggle(context);
   }
@@ -850,6 +894,7 @@ export {
   wireAutoOpenClose,
   populateSidebarProducts,
   bindCartButtonToggle,
+  cleanupOverlayAndControls,
   createCartSidebar,
   playAndClearHotspotAfterDelay,
   handleProductClick,
