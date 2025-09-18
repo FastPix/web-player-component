@@ -54,10 +54,26 @@ function initPlaylistControls(context: any) {
     }
 
     // Add unique CSS-disabled classes
+    context.prevButton.classList.toggle(
+      "playlistPrevButtonDisabledByCSS",
+      shouldDisablePrev
+    );
+
     context.playPauseButton.classList.toggle(
       "playlistPrevButtonDisabledByCSS",
       shouldDisablePrev
     );
+
+    context.forwardRewindControlsWrapper.classList.toggle(
+      "playlistPrevButtonDisabledByCSS",
+      shouldDisablePrev
+    );
+
+    context.forwardRewindControlsWrapper.classList.toggle(
+      "playlistNextButtonDisabledByCSS",
+      shouldDisableNext
+    );
+
     context.nextButton.classList.toggle(
       "playlistNextButtonDisabledByCSS",
       shouldDisableNext

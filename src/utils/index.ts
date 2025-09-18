@@ -372,7 +372,7 @@ function renderPlaylistPanel(context: any) {
 
   context.playlistPanel.innerHTML = ""; // Clear before render
 
-  context.playlist.forEach((ep, idx) => {
+  context.playlist.forEach((ep: any, idx: number) => {
     const item = document.createElement("div");
     item.className = "playlist-item";
     if (ep.playbackId === context.playbackId) {
@@ -405,9 +405,28 @@ function renderPlaylistPanel(context: any) {
     item.appendChild(thumb);
     item.appendChild(info);
 
-    item.addEventListener("click", () => {
+    item.addEventListener("click", (e) => {
+      // Prevent parent toggle button from re-toggling the panel
+      e.preventDefault();
+      e.stopPropagation();
+
+      // If this item is already active, skip reloading
+      if (item.classList.contains("selected")) {
+        context.playlistPanel.classList.remove("open");
+        context.playlistPanel.classList.add("closing");
+        setTimeout(() => {
+          context.playlistPanel.classList.remove("closing");
+        }, 200);
+        return;
+      }
+
       context.selectEpisodeByPlaybackId(ep.playbackId);
-      context.playlistPanel.style.display = "none";
+      // Smooth close of panel
+      context.playlistPanel.classList.remove("open");
+      context.playlistPanel.classList.add("closing");
+      setTimeout(() => {
+        context.playlistPanel.classList.remove("closing");
+      }, 200);
     });
 
     context.playlistPanel.appendChild(item);
@@ -534,15 +553,24 @@ function smoothTransitionToControls(context: Context, isVisible: boolean) {
     "playbackRateDiv",
     "liveStreamDisplay",
     "subtitleMenu",
+    "playlistButton",
     "castButton",
+    "playlistSlot",
   ];
 
   const opacityValue = isVisible ? "1" : "0";
   const transitionStyle = isVisible ? "opacity 0.9s ease" : "";
 
   elements.forEach((elementName) => {
-    const element = context[elementName];
+    const element = (context as any)[elementName];
     if (element) {
+      if (elementName === "playlistSlot") {
+        // Only reveal slot when controls are visible AND the external panel is open
+        const shouldShow = isVisible && !!context.externalPlaylistOpen;
+        element.style.opacity = shouldShow ? "1" : "0";
+        element.style.transition = transitionStyle;
+        return;
+      }
       element.style.opacity = opacityValue;
       element.style.transition = transitionStyle;
     }
@@ -617,11 +645,14 @@ function receiveAttributes(context: any) {
   context.controlsContainerValue = updateControlsVisibility(context);
   context.hideControlAttr = context.hasAttribute("hide-controls");
 
-  context.loopPlaylistTillEnd = context.hasAttribute("autoplay-next");
+  context.loopPlaylistTillEnd = context.hasAttribute("loop-next");
 
   context.token = context.getAttribute("token");
   context.drmToken = context.getAttribute("drm-token");
   context.playbackId = context.getAttribute("playback-id");
+
+  // New: optional default playback for playlists
+  context.defaultPlaybackId = context.getAttribute("default-playback-id");
 
   context.defaultStreamType =
     context.getAttribute("default-stream-type") ?? "on-demand";
@@ -633,6 +664,11 @@ function receiveAttributes(context: any) {
   context.startTimeAttribute = context.hasAttribute("start-time")
     ? context.getAttribute("start-time")
     : 0;
+
+  // NEW: attribute to hide default playlist panel while keeping button available
+  context.hideDefaultPlaylistPanel = context.hasAttribute(
+    "hide-default-playlist-panel"
+  );
 
   // thumbnail attributes
   context.thumbnailTime =

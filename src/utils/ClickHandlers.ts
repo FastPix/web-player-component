@@ -7,11 +7,9 @@ import {
   updateVolumeControlBackground,
 } from "./VolumeController";
 import {
-  hideShowSubtitlesMenu,
   toggleAudioMenu,
   toggleFullScreen,
   togglePlaybackRateButtons,
-  toggleResolutionMenu,
   toggleSubtitlesMenu,
   toggleVideoPlayback,
 } from "./ToggleController";
@@ -21,53 +19,37 @@ import { syncVolumeWithChromecast } from "./CastHandler";
 
 function subtileButtonClickHandler(context: any) {
   context.ccButton.addEventListener("click", () => {
-    if (context.subtitleMenu.style.display === "flex") {
+    // True toggle: if open, close and return
+    const isOpen =
+      context.subtitleMenu && context.subtitleMenu.style.display !== "none";
+    if (isOpen) {
       context.subtitleMenu.style.display = "none";
-    } else {
-      toggleSubtitlesMenu(context);
+      return;
     }
-
-    if (context.resolutionMenu.style.display !== "none") {
-      toggleResolutionMenu(context);
-    }
-
-    if (context.playbackRateDiv.style.display !== "none") {
-      togglePlaybackRateButtons(context);
-    }
-
-    if (context.audioMenu.style.display !== "none") {
-      toggleAudioMenu(context);
-    }
+    // Otherwise close others then open
+    hideMenus(context);
+    toggleSubtitlesMenu(context);
   });
 }
 
 function audioButtonClickHandler(context: any) {
   context.audioMenuButton.addEventListener("click", () => {
-    // Close the resolution menu if it's open
-    if (context.playbackRateDiv.style.display !== "none") {
-      togglePlaybackRateButtons(context);
+    // True toggle: if open, close and return
+    const isOpen =
+      context.audioMenu && context.audioMenu.style.display !== "none";
+    if (isOpen) {
+      context.audioMenu.style.display = "none";
+      return;
     }
-
-    if (context.resolutionMenu.style.display !== "none") {
-      toggleResolutionMenu(context);
-    }
-
-    if (context.subtitleMenu.style.display !== "none") {
-      hideShowSubtitlesMenu(context);
-    }
-
-    if (context.playbackRateDiv.style.display !== "none") {
-      togglePlaybackRateButtons(context);
-    }
-
-    toggleAudioMenu(context);
+    hideMenus(context); // closes playlistPanel + other menus
+    toggleAudioMenu(context); // then open the target menu
   });
 }
 
 function fullScreenButtonClickHandler(context: any) {
   context.fullScreenButton.addEventListener("click", () => {
-    toggleFullScreen(context);
     hideMenus(context);
+    toggleFullScreen(context);
   });
 }
 
@@ -201,17 +183,16 @@ function playPauseButtonClickHandler(context: any) {
 
 function playbackRateButtonClickHandler(context: any) {
   context.playbackRateButton.addEventListener("click", () => {
-    if (context.audioMenu.style.display !== "none") {
-      toggleAudioMenu(context);
+    // If already open, close and return (true toggle)
+    const isOpen =
+      context.playbackRateDiv &&
+      context.playbackRateDiv.style.display !== "none";
+    if (isOpen) {
+      context.playbackRateDiv.style.display = "none";
+      return;
     }
-
-    if (context.resolutionMenu.style.display !== "none") {
-      toggleResolutionMenu(context);
-    }
-
-    if (context.subtitleMenu.style.display !== "none") {
-      hideShowSubtitlesMenu(context);
-    }
+    // Otherwise, close other menus and open this one
+    hideMenus(context);
     togglePlaybackRateButtons(context);
   });
 }

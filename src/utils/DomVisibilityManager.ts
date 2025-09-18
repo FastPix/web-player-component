@@ -20,6 +20,10 @@ function hideAllControls(context: any) {
     context.castButton.style.opacity = "0";
   }
 
+  if (context.playlistSlot) {
+    context.playlistSlot.style.opacity = "0";
+  }
+
   if (context.playbackRateDiv) {
     context.playbackRateDiv.style.opacity = "0";
   }
@@ -85,27 +89,41 @@ function showbackDropColor(context: any) {
 }
 
 function hideMenus(context: any) {
-  const menus = [
+  const menus: any[] = [
     context.playbackRateDiv,
     context.resolutionMenu,
     context.audioMenu,
     context.subtitleMenu,
-  ];
+    context.playlistPanel,
+  ].filter(Boolean);
 
   let shouldHide = false;
+  try {
+    shouldHide = menus.some((m) => m?.style?.display !== "none");
+  } catch {}
 
-  // Check if any menu is visible
-  for (const menu of menus) {
-    if (menu.style.display !== "none") {
-      shouldHide = true;
-      break;
-    }
-  }
-
-  // Hide menus only if any of them is visible
   if (shouldHide) {
-    menus.forEach((menu) => (menu.style.display = "none"));
+    menus.forEach((m) => {
+      try {
+        if (m?.style) m.style.display = "none";
+      } catch {}
+    });
   }
+
+  // Close playlist panel if open (same smooth transition used elsewhere)
+  try {
+    if (context.playlistPanel?.classList?.contains("open")) {
+      context.playlistPanel.classList.remove("open");
+      context.playlistPanel.classList.add("closing");
+      setTimeout(() => {
+        try {
+          context.playlistPanel?.classList?.remove("closing");
+          if (context.playlistPanel?.style)
+            context.playlistPanel.style.display = "none";
+        } catch {}
+      }, 500);
+    }
+  } catch {}
 }
 
 function hidebackDropColor(context: any) {

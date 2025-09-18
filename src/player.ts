@@ -23,7 +23,12 @@ import { VolumeHighIcon } from "./icons/VolumeIcon/index";
 import { skeleton } from "./utils/InnerHtml";
 import { fullScreenChangeHandler } from "./utils/FullScreenChangeHandler";
 import { customizeThumbnail } from "./utils/thumbnailSeeking";
-import { handleTitleContainer, hideMenus } from "./utils/DomVisibilityManager";
+import {
+  handleTitleContainer,
+  hideMenus,
+  showLoader,
+  hideLoader,
+} from "./utils/DomVisibilityManager";
 import { hideDefaultSubtitlesStyles } from "./utils/SubtitleHandler";
 import {
   configHls,
@@ -52,6 +57,7 @@ import {
   DrmSetup,
   getSRC,
   receiveAttributes,
+  renderPlaylistPanel,
   setStreamUrl,
   updateTimeDisplay,
   videoEvents,
@@ -79,6 +85,81 @@ type ShoppableSidebarConfig = {
   bannerMessage?: string;
   showPostPlayOverlay?: boolean;
 };
+
+// Helpers to reduce cognitive complexity in playlist handling
+function normalizePlaylistInput(playlistJson: any[]): any[] {
+  return playlistJson
+    .map((it: any) => {
+      const playbackId = it.playbackId ?? it["playback-id"];
+      if (!playbackId) return null;
+      return {
+        playbackId,
+        token: it.token ?? it["token"],
+        drmToken: it.drmToken ?? it["drm-token"],
+        customDomain: it.customDomain ?? it["custom-domain"],
+        title: it.title,
+        thumbnail: it.thumbnail,
+        duration: it.duration,
+      };
+    })
+    .filter(Boolean);
+}
+
+function computeInitialIndexForPlaylist(self: any): number {
+  const preferredPlaybackId = self.defaultPlaybackId ?? null;
+  if (!preferredPlaybackId) return 0;
+  const preferredIndex = self.playlist.findIndex(
+    (p: any) => p.playbackId === preferredPlaybackId
+  );
+  return preferredIndex >= 0 ? preferredIndex : 0;
+}
+
+function updateInitialPlayButtonVisibility(self: any): void {
+  if (!self.playPauseButton) return;
+  const hasAutoPlay =
+    self.hasAttribute("auto-play") || self.hasAttribute("loop-next");
+  const initialPlayButtonValue = getComputedStyle(self)
+    .getPropertyValue("--initial-play-button")
+    .trim();
+
+  if (Array.isArray(self.playlist) && self.playlist.length > 0) {
+    if (hasAutoPlay || initialPlayButtonValue === "none") {
+      self.playPauseButton.style.setProperty("display", "none");
+    } else {
+      self.playPauseButton.style.setProperty("display", "flex");
+    }
+  } else {
+    self.playPauseButton.style.setProperty(
+      "display",
+      "var(--initial-play-button, flex)"
+    );
+  }
+}
+
+function loadCurrentPlaylistItemAndRender(self: any): void {
+  const current = self.playlist[self.currentIndex];
+  if (!current?.playbackId) return;
+
+  const hasAutoPlay =
+    self.hasAttribute("auto-play") || self.hasAttribute("loop-next");
+  if (hasAutoPlay) {
+    showLoader(self);
+  }
+
+  self.loadByPlaybackId(current.playbackId, {
+    token: current.token,
+    drmToken: current.drmToken,
+    customDomain: current.customDomain,
+  });
+
+  if (
+    !self.hideDefaultPlaylistPanel &&
+    typeof renderPlaylistPanel === "function" &&
+    self.playlistPanel
+  ) {
+    renderPlaylistPanel(self);
+  }
+}
 
 class FastPixPlayer extends windowObject.HTMLElement {
   [x: string]: any;
@@ -161,6 +242,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   defaultStreamType?: string | null;
   streamType?: string | null;
   defaultDuration?: string | null;
+  defaultPlaybackId?: string | null;
   loadStartTime?: number;
   parentLiveTitleContainer?: HTMLDivElement;
   liveStreamDisplay?: HTMLButtonElement;
@@ -174,8 +256,12 @@ class FastPixPlayer extends windowObject.HTMLElement {
   shadowRoot!: ShadowRoot;
   prevButton!: HTMLButtonElement;
   nextButton!: HTMLButtonElement;
-  private playlistPanel!: HTMLDivElement;
+  private playlistPanel?: HTMLDivElement;
   private playlistButton!: HTMLButtonElement;
+  hideDefaultPlaylistPanel: boolean = false;
+  playlistItems?: HTMLDivElement;
+  externalPlaylistOpen: boolean = false;
+  playlistSlot?: HTMLDivElement;
   cartButton!: HTMLButtonElement;
   cartSidebar!: HTMLDivElement;
   isCartOpen: boolean = false;
@@ -183,6 +269,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
   cartGotoLink?: string;
   isSidebarHovered: boolean = false;
   private _initShoppableRequested: boolean = false;
+  // Re-enter Picture-in-Picture after source switch if it was active
+  _reenterPiPOnReady: boolean = false;
 
   // Track whether a hotspot is currently visible in the player
   isHotspotVisible: boolean = false;
@@ -198,6 +286,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
   updatePlaylistControlsVisibility!: () => void;
   hasAutoClosedSidebar = false;
   _lastActiveProductEl: HTMLDivElement | null = null;
+  customNext?: (ctx: any) => void;
+  customPrev?: (ctx: any) => void;
 
   constructor() {
     super();
@@ -399,10 +489,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.volumeControl.step = "0.2";
     this.volumeControl.value = "1";
     this.volumeControl.style.display = "none";
-    if ("appearance" in this.volumeControl.style) {
-      this.volumeControl.style.appearance = "none";
-    }
-
     this.volumeControl.style.borderRadius = "0.313rem";
 
     //Picture-in-picture button click handler
@@ -712,26 +798,22 @@ class FastPixPlayer extends windowObject.HTMLElement {
    */
   addPlaylist(playlistJson: any[]) {
     if (!Array.isArray(playlistJson)) return console.warn("Invalid playlist");
-    this.playlist = playlistJson;
-    this.currentIndex = 0;
+
+    // Normalize and set playlist
+    this.playlist = normalizePlaylistInput(playlistJson);
+
+    // Decide initial index using default-playback-id if provided; fallback to first item
+    this.currentIndex = computeInitialIndexForPlaylist(this);
+
     if (typeof this.updatePlaylistControlsVisibility === "function") {
       this.updatePlaylistControlsVisibility();
     }
-    // ✅ Use setProperty to hide or reset playPauseButton visibility
-    if (this.playPauseButton) {
-      if (this.playlist.length > 0) {
-        this.playPauseButton.style.setProperty("display", "flex");
-      } else {
-        this.playPauseButton.style.setProperty(
-          "display",
-          "var(--initial-play-button, flex)"
-        );
-      }
-    }
-    const current = this.playlist[this.currentIndex];
-    if (current?.playbackId) {
-      this.loadByPlaybackId(current.playbackId);
-    }
+
+    // Handle play button visibility based on CSS variable and auto-play settings
+    updateInitialPlayButtonVisibility(this);
+
+    // Load with per-episode options and refresh default panel selection
+    loadCurrentPlaylistItemAndRender(this);
   }
 
   /**
@@ -742,7 +824,37 @@ class FastPixPlayer extends windowObject.HTMLElement {
       this.currentIndex++;
       const nextItem = this.playlist[this.currentIndex];
       if (nextItem?.playbackId) {
-        this.loadByPlaybackId(nextItem.playbackId);
+        // Lightweight teardown before switching
+        this.destroy();
+
+        // If PiP is active, mark intent to re-enter after the new source is ready
+        try {
+          if ((document as any).pictureInPictureElement) {
+            (this as any)._reenterPiPOnReady = true;
+            (document as any).exitPictureInPicture?.();
+          }
+        } catch {}
+
+        // Hide controls while loading next
+        this.controlsContainer.style.setProperty("--controls", "none");
+
+        // Show loader for smooth transition
+        showLoader(this);
+
+        this.loadByPlaybackId(nextItem.playbackId, {
+          token: nextItem.token,
+          drmToken: nextItem.drmToken,
+          customDomain: nextItem.customDomain,
+        });
+
+        // Update playlist panel to reflect the new active item
+        if (
+          !this.hideDefaultPlaylistPanel &&
+          typeof renderPlaylistPanel === "function" &&
+          this.playlistPanel
+        ) {
+          renderPlaylistPanel(this);
+        }
       }
     } else {
       console.info("End of playlist");
@@ -758,7 +870,38 @@ class FastPixPlayer extends windowObject.HTMLElement {
       this.currentIndex--;
       const prevItem = this.playlist[this.currentIndex];
       if (prevItem?.playbackId) {
-        this.loadByPlaybackId(prevItem.playbackId);
+        // Lightweight teardown before switching
+        this.destroy();
+
+        // If PiP is active, mark intent to re-enter after the new source is ready
+        try {
+          if ((document as any).pictureInPictureElement) {
+            (this as any)._reenterPiPOnReady = true;
+            (document as any).exitPictureInPicture?.();
+          }
+        } catch {}
+
+        // Hide controls while loading previous
+        if (this.controlsContainer) {
+          this.controlsContainer.style.setProperty("--controls", "none");
+        }
+        // Show loader for smooth transition
+        showLoader(this);
+
+        this.loadByPlaybackId(prevItem.playbackId, {
+          token: prevItem.token,
+          drmToken: prevItem.drmToken,
+          customDomain: prevItem.customDomain,
+        });
+
+        // Update playlist panel to reflect the new active item
+        if (
+          !this.hideDefaultPlaylistPanel &&
+          typeof renderPlaylistPanel === "function" &&
+          this.playlistPanel
+        ) {
+          renderPlaylistPanel(this);
+        }
       }
     } else {
       console.info("Start of playlist");
@@ -769,27 +912,54 @@ class FastPixPlayer extends windowObject.HTMLElement {
   /**
    * Load video by new playbackId (without reloading page)
    */
-  async loadByPlaybackId(playbackId: string) {
+  async loadByPlaybackId(
+    playbackId: string,
+    options?: {
+      token?: string;
+      drmToken?: string;
+      customDomain?: string;
+      emitPlaybackChange?: boolean; // fire playbackidchange only when true (e.g., user clicks)
+    }
+  ) {
+    // Unconditionally clear subtitle UI before switching sources
+    try {
+      if (this.subtitleContainer) {
+        this.subtitleContainer.innerHTML = "";
+        this.subtitleContainer.classList.remove("contained");
+      }
+      const tracks: any[] = Array.from(this.video?.textTracks ?? []);
+      tracks.forEach((t) => (t.mode = "disabled"));
+      if (this.subtitleMenu) this.subtitleMenu.style.display = "none";
+      this.currentSubtitleTrackIndex = -1;
+    } catch {}
+
     this.playbackId = playbackId;
 
-    const customDomain = this.getAttribute("custom-domain");
+    // Apply per-episode options to context (JSON takes priority)
+    if (options?.token) this.token = options.token;
+    if (options?.drmToken) this.drmToken = options.drmToken;
+    if (options?.customDomain)
+      this.setAttribute("custom-domain", options.customDomain);
+
+    const customDomain =
+      options?.customDomain || this.getAttribute("custom-domain");
     let playbackUrlFinal: string | null = null;
     const isSupportedStream =
       this.streamType === "on-demand" || this.streamType === "live-stream";
     if (isSupportedStream) {
       playbackUrlFinal = customDomain
-        ? `https://${customDomain}`
+        ? `https://stream.${customDomain}`
         : "https://stream.fastpix.io";
     }
 
-    if (this.drmToken) {
+    if (options?.drmToken) {
       DrmSetup(this);
     }
 
     await setStreamUrl(
       this,
       playbackId,
-      this.token ?? null,
+      options?.token ?? this.token ?? null,
       playbackUrlFinal ?? undefined,
       this.streamType ?? null
     );
@@ -801,22 +971,59 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.video.addEventListener(
       "canplay",
       () => {
+        // Hide loader when video is ready to play
+        hideLoader(this);
+        // Bring controls back when ready
+        if (this.controlsContainer) {
+          this.controlsContainer.style.setProperty("--controls", "flex");
+        }
+        // Re-enter PiP if previously active
+        try {
+          if (
+            this._reenterPiPOnReady &&
+            !(document as any).pictureInPictureElement
+          ) {
+            this.video?.requestPictureInPicture?.().catch(() => {});
+          }
+        } finally {
+          this._reenterPiPOnReady = false;
+        }
+        // Allow error UI again after first ready
+        this.suppressErrorUntilReady = false;
+
         toggleVideoPlayback(
           this,
           this.playbackId ?? "",
           this.thumbnailUrlFinal ?? "",
           this.streamType ?? ""
         );
+
+        // Keep default playlist panel selection in sync with active playback
+        if (
+          !this.hideDefaultPlaylistPanel &&
+          typeof renderPlaylistPanel === "function" &&
+          this.playlistPanel
+        ) {
+          renderPlaylistPanel(this);
+        }
       },
       { once: true }
     );
 
-    // After load
-    this.dispatchEvent(
-      new CustomEvent("playbackidchange", {
-        detail: { playbackId },
-      })
-    );
+    // After load – only emit on explicit user actions
+    if (options?.emitPlaybackChange) {
+      this.dispatchEvent(
+        new CustomEvent("playbackidchange", {
+          detail: {
+            playbackId,
+            isFromPlaylist: this.playlist.length > 0,
+            currentIndex: this.currentIndex,
+            totalItems: this.playlist.length,
+            status: "ready",
+          },
+        })
+      );
+    }
   }
 
   /**
@@ -824,11 +1031,53 @@ class FastPixPlayer extends windowObject.HTMLElement {
    */
   public selectEpisodeByPlaybackId(playbackId: string) {
     const index = this.playlist.findIndex(
-      (item) => item.playbackId === playbackId
+      (item: any) => item.playbackId === playbackId
     );
     if (index !== -1) {
       this.currentIndex = index; // 🧠 update the internal pointer
-      this.loadByPlaybackId(playbackId);
+      const item = this.playlist[this.currentIndex];
+      this.loadByPlaybackId(playbackId, {
+        token: item.token,
+        drmToken: item.drmToken,
+        customDomain: item.customDomain,
+        emitPlaybackChange: true, // fire event only on user-initiated selection
+      });
+
+      // Update playlist panel to reflect the new active item
+      if (
+        !this.hideDefaultPlaylistPanel &&
+        typeof renderPlaylistPanel === "function" &&
+        this.playlistPanel
+      ) {
+        renderPlaylistPanel(this);
+      }
+
+      // If using external panel, automatically close it after selection
+      if (this.hideDefaultPlaylistPanel && this.externalPlaylistOpen) {
+        this.externalPlaylistOpen = false;
+        const children: Element[] = this.playlistSlot
+          ? Array.from(this.playlistSlot.children)
+          : [];
+        children.forEach(
+          (child) => ((child as HTMLElement).style.pointerEvents = "none")
+        );
+        this.dispatchEvent(
+          new CustomEvent("playlisttoggle", {
+            detail: {
+              open: false,
+              hasPlaylist:
+                Array.isArray(this.playlist) && this.playlist.length > 0,
+              currentIndex: this.currentIndex,
+              totalItems: Array.isArray(this.playlist)
+                ? this.playlist.length
+                : 0,
+              playbackId: this.playbackId ?? null,
+            },
+            bubbles: true,
+            composed: true,
+          })
+        );
+      }
     } else {
       console.warn("PlaybackId not found in current playlist");
     }
@@ -853,6 +1102,78 @@ class FastPixPlayer extends windowObject.HTMLElement {
     }
   }
 
+  updateEpisodeControls() {
+    if (
+      this.episodeType === "episodic" &&
+      this.episodes &&
+      this.currentEpisodeIndex !== undefined
+    ) {
+      // Show episode controls
+      this.episodeControlsContainer!.style.display = "inline-flex";
+      this.episodeControlsContainer!.style.alignItems = "center";
+      this.episodeControlsContainer!.style.gap = "8px";
+      this.episodeControlsContainer!.style.marginLeft = "12px";
+
+      // Update button states based on current episode index
+      const isFirstEpisode = this.currentEpisodeIndex === 0;
+      const isLastEpisode =
+        this.currentEpisodeIndex === this.episodes.length - 1;
+
+      // Disable prev button if it's the first episode
+      this.prevEpisodeButton!.disabled = isFirstEpisode;
+      // Disable next button if it's the last episode
+      this.nextEpisodeButton!.disabled = isLastEpisode;
+
+      // Update button styles based on disabled state
+      this.prevEpisodeButton!.style.opacity = isFirstEpisode ? "0.5" : "1";
+      this.nextEpisodeButton!.style.opacity = isLastEpisode ? "0.5" : "1";
+    } else {
+      
+      // Hide episode controls for standalone content
+      this.episodeControlsContainer!.style.display = "none";
+    }
+  }
+
+  // Lightweight teardown before switching sources (keeps element alive)
+  destroy(): void {
+    try {
+      // Close menus/UI to prevent overlap
+      try {
+        hideMenus(this);
+      } catch {}
+
+      // Cancel timers
+      if (this.hotspotPauseTimeout) {
+        clearTimeout(this.hotspotPauseTimeout);
+        this.hotspotPauseTimeout = null;
+      }
+
+      // Exit PiP but mark to re-enter on ready
+      try {
+        if ((document as any).pictureInPictureElement) {
+          this._reenterPiPOnReady = true;
+          (document as any).exitPictureInPicture?.();
+        }
+      } catch {}
+
+      // Pause and release current media
+      try {
+        this.video?.pause?.();
+        // Keep src; loadByPlaybackId will replace it
+      } catch {}
+
+      // Recreate HLS to avoid stale state
+      try {
+        this.hls?.destroy?.();
+        if (this.video.fp) {
+          this.video.fp.destroy();
+        }
+        this.hls = new Hls(this.config);
+        hlsListeners(this);
+      } catch {}
+    } catch {}
+  }
+
   connectedCallback() {
     const customDomain = this.getAttribute("custom-domain");
 
@@ -868,13 +1189,22 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
     // setup playback stream
     const setupStream = async () => {
+      // Skip initial stream setup if a playlist is present or no playback-id yet (JSON/consumer will drive first load)
+      if (
+        !this.playbackId ||
+        (Array.isArray(this.playlist) && this.playlist.length > 0)
+      ) {
+        // Avoid flashing error screen while waiting for playlist-driven first load
+        this.suppressErrorUntilReady = true;
+        return;
+      }
       let playbackUrlFinal: string | null = null; // Ensuring proper type
       if (
         this.streamType === "on-demand" ||
         this.streamType === "live-stream"
       ) {
         playbackUrlFinal = customDomain
-          ? `https://${customDomain}`
+          ? `https://stream.${customDomain}`
           : "https://stream.fastpix.io";
       }
 
@@ -925,8 +1255,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     configureForiOS(this);
     fullScreenChangeHandler(this);
 
-    this.playPauseButton.addEventListener("click", (e) => {
-      e.stopImmediatePropagation(); // Prevent other handlers from blocking
+    this.playPauseButton.addEventListener("click", () => {
       this.videoEnded = false;
       hideMenus(this);
       toggleVideoPlayback(
@@ -1012,7 +1341,21 @@ class FastPixPlayer extends windowObject.HTMLElement {
       button.textContent = `${rate}x`;
       button.title = `${rate}x`;
       button.className = "playbackRateButton";
+
+      // Pre-select default as active before any click
+      if (String(rate) === String(this.defaultPlaybackRate)) {
+        button.classList.add("active");
+        this.lastClickedPlaybackRateButton = button;
+      }
+
       button.addEventListener("click", () => {
+        // Ensure any previously active buttons are cleared before applying
+        try {
+          const all = this.playbackRateDiv?.querySelectorAll(
+            ".playbackRateButton.active"
+          );
+          all?.forEach((el: Element) => el.classList.remove("active"));
+        } catch {}
         setPlaybackRate(this, rate, button);
       });
 
@@ -1027,26 +1370,45 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.playlistButton.innerHTML = PlaylistIcon;
     this.playlistButton.className = "playlistButton";
 
-    // player.ts or inside connectedCallback/render
-    this.playlistPanel = document.createElement("div");
-    this.playlistPanel.className = "playlist-panel";
-    this.playlistPanel.style.maxHeight = "400px";
-    this.playlistPanel.style.display = "none"; // Initially hidden
+    // Only create/append default playlist panel when not hidden by attribute
+    if (!this.hideDefaultPlaylistPanel) {
+      this.playlistPanel = document.createElement("div");
+      this.playlistPanel.className = "playlist-panel";
+      this.playlistPanel.style.maxHeight = "400px";
 
-    // Create the header
-    const header = document.createElement("div");
-    header.className = "playlist-header";
-    header.textContent = "Episode List";
+      const header = document.createElement("div");
+      header.className = "playlist-header";
+      header.textContent = "Episode List";
 
-    // Create the scrollable wrapper for playlist items
-    this.playlistItems = document.createElement("div");
-    this.playlistItems.className = "playlist-items-wrapper";
+      this.playlistItems = document.createElement("div");
+      this.playlistItems.className = "playlist-items-wrapper";
 
-    // Append header and scrollable list to panel
-    this.playlistPanel.appendChild(header);
+      this.playlistPanel.appendChild(header);
+      this.bottomRightDiv.appendChild(this.playlistPanel);
+    } else {
+      // Create an internal slot container so user panels live inside fullscreen element
+      this.playlistSlot = document.createElement("div");
+      this.playlistSlot.className = "playlist-slot";
+      // Minimal defaults; positioned relative to controls container
+      this.playlistSlot.style.position = "absolute";
+      this.playlistSlot.style.top = "0";
+      this.playlistSlot.style.left = "0";
+      this.playlistSlot.style.right = "0";
+      this.playlistSlot.style.bottom = "0";
+      this.playlistSlot.style.opacity = "0";
+      this.playlistSlot.style.transition = "opacity 0.9s ease";
+      this.playlistSlot.style.pointerEvents = "none";
+      this.playlistSlot.style.zIndex = "9999";
+      this.controlsContainer.appendChild(this.playlistSlot);
 
-    // Add your styles (example in CSS section below)
-    this.playlistButton?.appendChild(this.playlistPanel); // or this.appendChild if not shadow DOM
+      // Move any declarative slotted children into the slot container
+      const slotted = Array.from(this.children).filter((el: Element) => {
+        const slotAttr = el.getAttribute("slot");
+        const dataSlot = el.getAttribute("data-fastpix-slot");
+        return slotAttr === "playlist-panel" || dataSlot === "playlist-panel";
+      });
+      slotted.forEach((el) => this.playlistSlot?.appendChild(el));
+    }
 
     // playbackRateButton click handler
     playbackRateButtonClickHandler(this);
@@ -1063,6 +1425,34 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.bottomRightDiv.appendChild(this.playbackRateDiv);
 
     playlistButtonClickHandler(this);
+
+    // Respond to external playlist toggle events: close other menus and open slot
+    try {
+      this.addEventListener("playlisttoggle", (evt: any) => {
+        const open = !!evt?.detail?.open;
+        // Only handle external playlist scenario
+        if (!this.hideDefaultPlaylistPanel) return;
+        try {
+          // Close any open menus (rate, audio, subs, resolution)
+          hideMenus(this);
+        } catch {}
+        // Reflect state and toggle slot interactivity/visibility
+        this.externalPlaylistOpen = open;
+        const children: Element[] = this.playlistSlot
+          ? Array.from(this.playlistSlot.children)
+          : [];
+        children.forEach(
+          (child) =>
+            ((child as HTMLElement).style.pointerEvents = open
+              ? "auto"
+              : "none")
+        );
+        if (this.playlistSlot && (this.playlistSlot as HTMLElement).style) {
+          this.playlistSlot.style.opacity = open ? "1" : "0";
+          this.playlistSlot.style.transition = "opacity 0.9s ease";
+        }
+      });
+    } catch {}
 
     // start-time attribute
     const startTime = parseFloat(this.startTimeAttribute) || 0;
@@ -1119,6 +1509,32 @@ class FastPixPlayer extends windowObject.HTMLElement {
     PlaylistNextButtonClickHandler(this);
     PlaylistPrevButtonClickHandler(this);
 
+    // Keep layout in sync when host toggles CSS variables or episodes change
+    try {
+      // Recompute visibility when playback changes (index moves)
+      this.addEventListener("playbackidchange", () => {
+        if (typeof this.updatePlaylistControlsVisibility === "function") {
+          this.updatePlaylistControlsVisibility();
+        }
+      });
+      // Watch for inline style changes (CSS vars) and recompute
+      if (!this.mutationObserver) {
+        this.mutationObserver = new MutationObserver((mutations) => {
+          for (const m of mutations) {
+            if (m.type === "attributes" && m.attributeName === "style") {
+              if (typeof this.updatePlaylistControlsVisibility === "function") {
+                this.updatePlaylistControlsVisibility();
+              }
+            }
+          }
+        });
+        this.mutationObserver.observe(this, {
+          attributes: true,
+          attributeFilter: ["style"],
+        });
+      }
+    } catch {}
+
     // Initialize shoppable UI if theme is set
     const theme = this.getAttribute ? this.getAttribute("theme") : null;
     if (theme === "shoppable-video-player" || theme === "shoppable-shorts") {
@@ -1134,8 +1550,10 @@ class FastPixPlayer extends windowObject.HTMLElement {
   }
 
   disconnectedCallback() {
-    this.wrapper.removeChild(this.video);
     this.hls?.destroy();
+    if (this.video.fp) {
+      this.video.fp.destroy();
+    }
   }
 
   static get observedAttributes() {
@@ -1285,79 +1703,27 @@ class FastPixPlayer extends windowObject.HTMLElement {
     spot.style.top = `${clampedTop}px`;
   }
 
-  // Helpers to reduce nesting
-  private removeAllHotspots(): void {
-    try {
-      this.wrapper?.querySelectorAll(".hotspot").forEach((el) => el.remove());
-      this.isHotspotVisible = false;
-    } catch (e) {
-      console.error("Failed to remove all hotspots:", e);
+  /**
+   * Returns the internal playlist slot container for custom UI injection
+   */
+  public getPlaylistSlot(): HTMLDivElement | null {
+    return this.playlistSlot ?? null;
+  }
+
+  public setNextHandler(handler: (ctx: any) => void) {
+    if (typeof handler === "function") {
+      this.customNext = handler;
+    } else {
+      console.warn("setNextHandler expects a function");
     }
   }
 
-  private buildHotspot(
-    marker: any,
-    productName: string,
-    zIndex: string = "1200"
-  ): HTMLDivElement {
-    const spot = documentObject.createElement("div");
-    spot.className = "hotspot";
-    spot.style.position = "absolute";
-    spot.style.width = "32px";
-    spot.style.height = "32px";
-    spot.style.cursor = "pointer";
-    spot.style.zIndex = zIndex;
-
-    // Store the original percentage values for repositioning during resize
-    spot.dataset.xPercent = String(marker.x);
-    spot.dataset.yPercent = String(marker.y);
-
-    this.positionHotspot(spot, Number(marker.x), Number(marker.y));
-    const dot = documentObject.createElement("div");
-    dot.className = "hotspot-dot";
-    spot.appendChild(dot);
-    const tooltip = documentObject.createElement("div");
-    tooltip.className = "hotspot-tooltip";
-    tooltip.innerText = String(productName ?? "")
-      .replace(/\s+/g, " ")
-      .trim();
-    tooltip.style.position = "absolute";
-    tooltip.style.whiteSpace = "nowrap";
-    tooltip.style.background = "#222";
-    tooltip.style.color = "#fff";
-    tooltip.style.padding = "6px 12px";
-    tooltip.style.borderRadius = "6px";
-    tooltip.style.fontSize = "0.95em";
-    tooltip.style.pointerEvents = "none";
-    tooltip.style.opacity = "0";
-    tooltip.style.transition = "opacity 0.2s";
-    switch (marker?.tooltipPosition) {
-      case "left":
-        tooltip.style.right = "110%";
-        tooltip.style.top = "50%";
-        tooltip.style.transform = "translateY(-50%)";
-        break;
-      case "right":
-        tooltip.style.left = "110%";
-        tooltip.style.top = "50%";
-        tooltip.style.transform = "translateY(-50%)";
-        break;
-      case "top":
-        tooltip.style.left = "50%";
-        tooltip.style.bottom = "110%";
-        tooltip.style.transform = "translateX(-50%)";
-        break;
-      case "bottom":
-      default:
-        tooltip.style.left = "50%";
-        tooltip.style.top = "110%";
-        tooltip.style.transform = "translateX(-50%)";
-        break;
+  public setPrevHandler(handler: (ctx: any) => void) {
+    if (typeof handler === "function") {
+      this.customPrev = handler;
+    } else {
+      console.warn("setPrevHandler expects a function");
     }
-    spot.appendChild(tooltip);
-    spot.onmouseenter = () => (tooltip.style.opacity = "1");
-    spot.onmouseleave = () => (tooltip.style.opacity = "0");
-    return spot;
   }
 }
 

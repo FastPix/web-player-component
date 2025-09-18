@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.8] - 2025-09-18
+
+### New & Improved: Playlist
+- Added playlist APIs: `addPlaylist(playlist)`, `next()`, `previous()`, `selectEpisodeByPlaybackId(playbackId)`
+- Supported attributes: `default-playback-id`, `hide-default-playlist-panel`, `loop-next`
+- Events: `playbackidchange`, `playlisttoggle`
+- Custom navigation hooks: `customNext(handler)`, `customPrev(handler)`; call `i.next()`/`i.previous()` inside your handlers
+- Default playlist panel can be hidden to build a fully custom panel via `slot="playlist-panel"`
+- Introduced `destroy()` for lightweight teardown before custom source-switching flows
+
+### iOS Volume Behavior
+- When iOS-specific volume button is active, standard slider/button are hidden
+
+### Menu Bugs fixed
+- Fixed playlist panel toggle inconsistencies (open/close state and pointer events)
+- Ensured external custom panel shows/hides reliably with `playlisttoggle`
+- Resolved menu overlap by closing rate/audio/subtitle/resolution menus when opening playlist panel
+
 ## [1.0.7] - 2025-09-04
 
 - Fixed "OpenOnPlay" and "autoClose" issue for shoppable-video-player theme

@@ -22,6 +22,8 @@ export const skeleton: string = `
     --previous-episode-button: flex;
     --shoppable-sidebar-width: 30%;
     --shoppable-sidebar-background-color: rgba(255, 255, 255, 0.75);
+    --play-button-initialized: flex;
+    --player-border-radius: 0px;
     aspect-ratio: 16 / 9;
     display: block; /* Ensure the custom element is a block-level element */
     font-family: Arial, sans-serif;
@@ -35,12 +37,13 @@ export const skeleton: string = `
 video {
     width: 100%;
     height: 100%;
-    max-width: 100% !important; /* Ensure the video does not exceed its container */
-    max-height: 100% !important; /* Ensure the video does not exceed its container */
+    display: block;
+    // max-width: 100% !important; /* Ensure the video does not exceed its container */
+    // max-height: 100% !important; /* Ensure the video does not exceed its container */
     object-fit: contain; /* Adjust this based on your requirement */
     overflow: hidden;
     background-color: #000; /* Fallback color */
-    border-radius: 10px;
+    border-radius: var(--player-border-radius);
 }
 
 google-cast-launcher {
@@ -235,6 +238,7 @@ video::-webkit-media-text-track-display {
 .playbackRateButton {
     border: 1px solid transparent;
     margin-right: 3px;
+    color: #100023;
 }
 
 .playbackRateButton.active {
@@ -343,7 +347,8 @@ video::-webkit-media-text-track-display {
     padding: 6px 10px 6px 20px;
     position: relative;
     white-space: nowrap;
-    text-overflow: ellipsis; 
+    text-overflow: ellipsis;
+    text-transform: capitalize; 
 }
 
 .parent.initialized.mobile .qualitySelectorButtons,
@@ -360,6 +365,10 @@ video::-webkit-media-text-track-display {
     border-radius: 2px;
     background: var(--accent-color);
     color: var(--primary-color);
+}
+
+.playbackRateButton {
+    color: #10023;
 }
 
 .playbackRateButton:hover {
@@ -612,6 +621,15 @@ bottom: 10px;
     border-radius: 0.313rem;
     height: 3px;
     background: linear-gradient(to right, var(--primary-color) 0%, var(--primary-color) 100%, #ddd 50%, #ddd 100%);
+}
+
+/* iOS volume mode: when iOS-specific button is active, hide standard slider/button */
+.parentVolumeDiv.volumeControliOS .volumeControl,
+.parentVolumeDiv.volumeControliOS .volumeButton {
+    display: none !important;
+}
+.parentVolumeDiv.volumeControliOS .volumeiOSButton {
+    display: flex !important;
 }
 
 /* Styling the volume control thumb */
@@ -1347,7 +1365,7 @@ playbackRateButtonInitial,
 }
 
 .initialPlayBigButton.initialplayPauseButtonStyle.initialized.showPlayButton {
-    display: var(--play-button-initialized, flex)
+    display: var(--play-button-initialized, flex) !important;
 }
 
 .initialPlayBigButton.initialized:not(.mobile) {
@@ -1424,6 +1442,8 @@ playbackRateButtonInitial,
 .playlistButton {
     align-items: center;
     justify-content: center;
+    color: var(--primary-color);
+    background-color: var(--secondary-color);
 }
 
 .playlistPrevButton {
@@ -1718,7 +1738,7 @@ justify-content: center !important;
 .playlist-panel {
   position: absolute;
   bottom: 60px;
-  right: 20px;
+  right: 60px; /* offset from button to avoid hover overlap */
   width: 300px;
   overflow-y: auto;
   background: var(--primary-color);
@@ -1729,6 +1749,24 @@ justify-content: center !important;
   padding: 10px;
   display: flex;
   flex-direction: column;
+  /* Smooth open/close */
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  /* Prevent interaction while hidden */
+  pointer-events: none;
+}
+
+.playlist-panel.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.playlist-panel.closing {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
 }
 
 .playlist-item {
@@ -1793,7 +1831,7 @@ justify-content: center !important;
 }
 
 .bottomRightContainer.mobile.initialized .playlist-panel {
-background-color: red;
+z-index: 1600;
 right: 0px;
 bottom: 46px;
 }
@@ -1805,6 +1843,7 @@ bottom: 46px;
 .controlsContainer.hasPlaylist .showPlayButton.initialized:not(.mobile).playlistPrevButtonDisabledByCSS {
     left: 20px;
 }
+
 
 .controlsContainer.hasPlaylist .leftControls {
     left: 20px;
@@ -1819,8 +1858,49 @@ bottom: 46px;
 }
 
 .controlsContainer.hasPlaylist .showPlayButton.initialized:not(.mobile) .playlistPrevButtonDisabledByCSS {
-    left: 20px;\
+    left: 20px;
     
+}
+
+.forwardRewindControlsWrapper.playlistPrevButtonDisabledByCSS,
+.forwardRewindControlsWrapper.playlistNextButtonDisabledByCSS {
+
+}
+
+.forwardRewindControlsWrapper.playlistNextButtonDisabledByCSS .playlistButtonVisible {
+    margin-right: 30px;
+}
+
+.forwardRewindControlsWrapper.playlistPrevButtonDisabledByCSS .playlistButtonVisible {
+    margin-right: 0px !important;
+}
+
+.controlsContainer.hasPlaylist .leftControls .playlistNextButton {
+    margin-left: 30px;
+}
+
+.forwardRewindControlsWrapper.playlistPrevButtonDisabledByCSS.playlistNextButtonDisabledByCSS {
+    margin-right: 0px;
+    margin-left: 30px;
+}
+
+.mobileControls.nextButtonDisabledMobile,
+.mobileControls.forwardSkipButtonHidden {
+    left: -24px;
+}
+
+.mobileControls.prevButtonDisabledMobile,
+.mobileControls.rewindBackButtonHidden {
+    left: 24px;
+}
+
+.mobileControls.forwardSkipButtonHidden.rewindBackButtonHidden.nextButtonDisabledMobile {
+    left: -24px;
+    bottom: 84px;
+}
+
+.mobileControls.nextButtonDisabledMobile.prevButtonDisabledMobile {
+    left: 0px;
 }
 
 // shoppable content

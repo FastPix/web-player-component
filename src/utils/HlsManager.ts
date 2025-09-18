@@ -1,7 +1,7 @@
 import { Hls } from "hls.js";
 
 import { hideError, showError } from "./ErrorElement.js";
-import { hideLoader, showLoader } from "./DomVisibilityManager.js";
+import { hideLoader, hideMenus, showLoader } from "./DomVisibilityManager.js";
 import {
   hideShowSubtitlesMenu,
   toggleAudioMenu,
@@ -402,6 +402,34 @@ function setupAudioTracks(context: any, audioTracks: any) {
   );
 
   context.audioMenu.append(...audioButtons);
+
+  // Prefer manifest default flag; else a track named "default"; else index 0
+  let defaultIndex = -1;
+  if (Array.isArray(audioTracks) && audioTracks.length > 0) {
+    defaultIndex = audioTracks.findIndex((t: any) => t?.default === true);
+    if (defaultIndex === -1)
+      defaultIndex = audioTracks.findIndex(
+        (t: any) => (t?.name ?? "").toString().toLowerCase() === "default"
+      );
+    if (defaultIndex === -1) defaultIndex = 0;
+  }
+
+  if (audioButtons[defaultIndex]) {
+    setActiveButton(audioButtons[defaultIndex], context.audioMenu.children);
+    try {
+      context.hls.audioTrack = defaultIndex;
+      // Ensure it's applied after internal state settles
+      setTimeout(() => {
+        try {
+          if (context.hls?.audioTrack !== defaultIndex)
+            context.hls.audioTrack = defaultIndex;
+        } catch {}
+      }, 0);
+    } catch (error) {
+      console.error("Error setting default audio track:", error);
+    }
+  }
+
   context.audioMenuButton.style.display =
     audioTracks.length > 1
       ? context.audioMenuButton.classList.add("audioMenuButtonShow")
@@ -411,8 +439,12 @@ function setupAudioTracks(context: any, audioTracks: any) {
 function createAudioButton(context: any, name: string, index: number) {
   const button = documentObject.createElement("button");
   button.className = "audioSelectorButtons";
-  button.textContent = name;
-  button.title = name;
+  const displayName =
+    (name ?? "").toString().toLowerCase() === "default"
+      ? "Default"
+      : (name ?? "").toString();
+  button.textContent = displayName;
+  button.title = displayName;
 
   if (index === 0) {
     button.classList.add("active");
@@ -448,11 +480,15 @@ function setupResolutionMenuButton(context: any) {
   context.resolutionMenuButton = oldButton;
 
   context.resolutionMenuButton.addEventListener("click", () => {
-    if (context.playbackRateDiv.style.display !== "none")
-      togglePlaybackRateButtons(context);
-    if (context.audioMenu.style.display !== "none") toggleAudioMenu(context);
-    if (context.subtitleMenu.style.display !== "none")
-      hideShowSubtitlesMenu(context);
+    // True toggle: if resolution menu is open, close and return
+    const isOpen =
+      context.resolutionMenu && context.resolutionMenu.style.display !== "none";
+    if (isOpen) {
+      context.resolutionMenu.style.display = "none";
+      return;
+    }
+    // Otherwise, close other menus then open resolution
+    hideMenus(context);
     toggleResolutionMenu(context);
   });
 }

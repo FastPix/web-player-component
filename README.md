@@ -908,3 +908,58 @@ fastpix-player {
 
 
 Each of these features is designed to enhance both flexibility and user experience, providing complete control over video playback, appearance, and user interactions in FastPix-player.
+
+## Playlist Quick Start
+
+Add a playlist and navigate programmatically or with the default UI.
+
+```html
+<fastpix-player id="player" aspect-ratio="16/9"></fastpix-player>
+<script>
+  const playlist = [
+    { playbackId: 'playback-id-1', title: 'Intro', thumbnail: "https://via.placeholder.com/300x200/ffc107/000000?text=Episode+1"},
+    { playbackId: 'playback-id-2', title: 'Deep Dive', thumbnail: "https://via.placeholder.com/300x200/ffc107/000000?text=Episode+2" token='playback-token' },
+    { playbackId: 'playback-id-2', title: 'Deep Dive', thumbnail: "https://via.placeholder.com/300x200/ffc107/000000?text=Episode+3",drmToken:'drm-token' },
+
+  ];
+
+  const player = document.getElementById('player');
+  player.addPlaylist(playlist);
+
+  // Optional: start from a specific id
+  // <fastpix-player default-playback-id="7f847ed3-6688-482b-8043-67a35325fb00">
+
+  player.addEventListener('playbackidchange', (e) => {
+    const { playbackId, currentIndex, totalItems } = e.detail || {};
+    console.log('Now playing', playbackId, currentIndex, '/', totalItems);
+  });
+
+  // Programmatic navigation
+  // player.next();
+  // player.previous();
+
+  // destroy(): Lightweight teardown before switching sources
+  // Typically not needed for standard playlist navigation (handled internally),
+  // but useful if you implement custom source-switching flows.
+  // player.destroy();
+</script>
+```
+
+Hide the default playlist panel and build your own using the slot:
+
+```html
+<fastpix-player id="player" hide-default-playlist-panel>
+  <div slot="playlist-panel" id="myPlaylistPanel">Your custom UI here</div>
+</fastpix-player>
+<script>
+  // Toggle with player-dispatched events
+  const player = document.getElementById('player');
+  const panel = document.getElementById('myPlaylistPanel');
+  player.addEventListener('playlisttoggle', (e) => {
+    if ((e.detail?.hasPlaylist ?? false) === false) return;
+    panel.style.display = e.detail.open ? 'block' : 'none';
+  });
+</script>
+```
+
+For full details see `PLAYLIST_DEVELOPER_GUIDE.md`.

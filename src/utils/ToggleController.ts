@@ -8,9 +8,11 @@ import {
   hideLoader,
   showInitialControls,
   showLoader,
+  hideMenus,
 } from "./DomVisibilityManager";
 import { getCastContext, isChromecastAvailable } from "./CastHandler";
 import { isIOS, renderPlaylistPanel } from "./index";
+import { renderEpisodeList } from "./EpisodeList";
 
 interface Track {
   mode: string;
@@ -84,7 +86,6 @@ function toggleFullScreen(context: any) {
 
   if (document.fullscreenElement) {
     document.exitFullscreen();
-    context.fullScreenButton.innerHTML = EnterFullScreenIcon;
     element.classList.remove("fullscreen");
   } else {
     element.requestFullscreen().catch((err: any) => {
@@ -210,7 +211,7 @@ function localPlayerLogic(
                 context,
                 context.video.offsetWidth,
                 playbackId,
-                thumbnailUrlFinal,
+                context.thumbnailUrlFinal,
                 streamType
               );
             })
@@ -248,23 +249,137 @@ function localPlayerLogic(
 
 function PlaylistNextButtonClickHandler(context: any) {
   context.nextButton.addEventListener("click", () => {
+    try {
+      if (typeof context.customNext === "function") {
+        // Allow users to provide their own handler (receives context)
+        context.customNext.call(context, context);
+        return;
+      }
+    } catch (err) {
+      console.error(
+        "customNext handler threw an error; falling back to default next()",
+        err
+      );
+    }
     context.next();
   });
 }
 
 function PlaylistPrevButtonClickHandler(context: any) {
   context.prevButton.addEventListener("click", () => {
+    try {
+      if (typeof context.customPrev === "function") {
+        // Allow users to provide their own handler (receives context)
+        context.customPrev.call(context, context);
+        return;
+      }
+    } catch (err) {
+      console.error(
+        "customPrev handler threw an error; falling back to default previous()",
+        err
+      );
+    }
     context.previous();
   });
 }
 
 function playlistButtonClickHandler(context: any) {
-  context.playlistButton.addEventListener("click", () => {
-    const isVisible = context.playlistPanel.style.display === "block";
-    context.playlistPanel.style.display = isVisible ? "none" : "block";
+  // Ensure outside click handler is registered once
+  if (!context._externalPlaylistOutsideHandlerRegistered) {
+    context.wrapper.addEventListener(
+      "click",
+      (evt: Event) => {
+        if (!context.hideDefaultPlaylistPanel) return;
+        if (!context.externalPlaylistOpen) return;
+        const target = evt.target as Node;
+        const clickedButton =
+          target === context.playlistButton ||
+          context.playlistButton.contains(target);
+        // Consider it inside only if the click is within one of the slotted custom panels
+        const children: Element[] = context.playlistSlot
+          ? Array.from(context.playlistSlot.children)
+          : [];
+        const clickedInsideCustomPanel = children.some((child) =>
+          child.contains(target)
+        );
+        if (!clickedButton && !clickedInsideCustomPanel) {
+          context.externalPlaylistOpen = false;
+          // Disable pointer events only on custom panel(s)
+          children.forEach(
+            (child) => ((child as HTMLElement).style.pointerEvents = "none")
+          );
+          context.dispatchEvent(
+            new CustomEvent("playlisttoggle", {
+              detail: {
+                open: false,
+                hasPlaylist:
+                  Array.isArray(context.playlist) &&
+                  context.playlist.length > 0,
+                currentIndex: context.currentIndex,
+                totalItems: Array.isArray(context.playlist)
+                  ? context.playlist.length
+                  : 0,
+                playbackId: context.playbackId ?? null,
+              },
+              bubbles: true,
+              composed: true,
+            })
+          );
+        }
+      },
+      true
+    );
+    context._externalPlaylistOutsideHandlerRegistered = true;
+  }
 
-    if (!isVisible) {
-      renderPlaylistPanel(context); // only refresh when opening
+  context.playlistButton.addEventListener("click", () => {
+    if (context.hideDefaultPlaylistPanel || !context.playlistPanel) {
+      // Emit event for host page to toggle its own playlist panel
+      const nextOpen = !context.externalPlaylistOpen;
+      context.externalPlaylistOpen = nextOpen;
+      // Enable/disable pointer events only on slotted custom panel(s)
+      const children: Element[] = context.playlistSlot
+        ? Array.from(context.playlistSlot.children)
+        : [];
+      children.forEach(
+        (child) =>
+          ((child as HTMLElement).style.pointerEvents = nextOpen
+            ? "auto"
+            : "none")
+      );
+      context.dispatchEvent(
+        new CustomEvent("playlisttoggle", {
+          detail: {
+            open: nextOpen,
+            hasPlaylist:
+              Array.isArray(context.playlist) && context.playlist.length > 0,
+            currentIndex: context.currentIndex,
+            totalItems: Array.isArray(context.playlist)
+              ? context.playlist.length
+              : 0,
+            playbackId: context.playbackId ?? null,
+          },
+          bubbles: true,
+          composed: true,
+        })
+      );
+      return;
+    }
+
+    const isOpen = context.playlistPanel.classList.contains("open");
+    if (isOpen) {
+      context.playlistPanel.classList.remove("open");
+      context.playlistPanel.classList.add("closing");
+      setTimeout(() => {
+        context.playlistPanel.classList.remove("closing");
+      }, 200);
+    } else {
+      hideMenus(context);
+      renderPlaylistPanel(context);
+      if (context.playlistPanel) {
+        context.playlistPanel.style.display = "block";
+        context.playlistPanel.classList.add("open");
+      }
     }
   });
 }
@@ -298,6 +413,24 @@ function toggleVideoPlayback(
     castContext.endCurrentSession(true);
   }
   localPlayerLogic(context, playbackId, thumbnailUrlFinal, streamType);
+}
+
+// Episode list methods
+function toggleEpisodeList(context: any) {
+  if (context.episodeListPanel && context.episodeListToggleButton) {
+    context.isEpisodeListVisible = !context.isEpisodeListVisible;
+
+    if (context.isEpisodeListVisible) {
+      context.episodeListPanel.style.display = "block";
+      context.episodeListToggleButton.innerHTML = "✕";
+      context.episodeListToggleButton.title = "Hide Episode List";
+      renderEpisodeList(context);
+    } else {
+      context.episodeListPanel.style.display = "none";
+      context.episodeListToggleButton.innerHTML = "📺";
+      context.episodeListToggleButton.title = "Show Episode List";
+    }
+  }
 }
 
 function toggleSubtitlesMenu(context: any) {
@@ -397,6 +530,7 @@ export {
   toggleResolutionMenu,
   togglePlaybackRateButtons,
   toggleVideoPlayback,
+  toggleEpisodeList,
   toggleSubtitlesMenu,
   getRemotePlaybackInstance,
   PlaylistPrevButtonClickHandler,

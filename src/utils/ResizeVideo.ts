@@ -172,12 +172,28 @@ function AppendMobileControls(context: any) {
     .getPropertyValue("--backward-skip-button")
     .trim();
 
+  const nextButtonValue = getComputedStyle(context.mobileControlButtonsBlock)
+    .getPropertyValue("--next-episode-button")
+    .trim();
+
+  const prevButtonValue = getComputedStyle(context.mobileControlButtonsBlock)
+    .getPropertyValue("--previous-episode-button")
+    .trim();
+
   if (forwardSkipButtonValue === "none") {
-    context.rewindBackButton.classList.add("forwardSkipButtonHidden");
+    context.mobileControls.classList.add("forwardSkipButtonHidden");
   }
 
   if (rewindBackButtonValue === "none") {
-    context.fastForwardButton.classList.add("rewindBackButtonHidden");
+    context.mobileControls.classList.add("rewindBackButtonHidden");
+  }
+
+  if (nextButtonValue === "none") {
+    context.mobileControls.classList.add("nextButtonDisabledMobile");
+  }
+
+  if (prevButtonValue === "none") {
+    context.mobileControls.classList.add("prevButtonDisabledMobile");
   }
 
   if (context.controlsContainer.classList.contains("hasPlaylist")) {
@@ -198,10 +214,12 @@ function updateVolumeUIDuringResize(context: any) {
     typeof window !== "undefined" &&
     !(window as any).MSStream
   ) {
-    context.volumeControl.style.display = "none";
-    context.volumeButton.style.display = "none";
+    // iOS: use iOS volume button and hide standard controls via CSS class
+    context.parentVolumeDiv.classList.add("volumeControliOS");
     context.volumeiOSButton.style.display = "flex";
   } else {
+    // Non-iOS: ensure standard controls visible and iOS class removed
+    context.parentVolumeDiv.classList.remove("volumeControliOS");
     context.volumeControl.style.display = "flex";
     context.volumeButton.style.display = "flex";
     context.volumeiOSButton.style.display = "none";
@@ -276,7 +294,9 @@ function miniDevice(
   context.progressBar.classList.add("mobile");
   context.parentVolumeDiv.classList.add("mobile");
 
-  updateMenuHeight(context.playlistPanel, 20, videoHeight);
+  if (context.playlistPanel) {
+    updateMenuHeight(context.playlistPanel, 20, videoHeight);
+  }
 
   // for subtitle styling of medium devices
   context.subtitleContainer.classList.add("medium");
@@ -334,7 +354,9 @@ function smallMobileDevice(
   context.progressBar.classList.add("mobile");
   context.parentVolumeDiv.classList.add("mobile");
 
-  updateMenuHeight(context.playlistPanel, 20, videoHeight);
+  if (context.playlistPanel) {
+    updateMenuHeight(context.playlistPanel, 20, videoHeight);
+  }
 
   removeUnusedControlsForSmallDevices(context);
 
@@ -386,7 +408,9 @@ function responsiveDevice(
 
   modifyControlsForMobileDevices(context);
 
-  updateMenuHeight(context.playlistPanel, 79, videoHeight);
+  if (context.playlistPanel) {
+    updateMenuHeight(context.playlistPanel, 79, videoHeight);
+  }
 
   context.leftControls.classList.add("mobile");
   context.playPauseButton.classList.add("mobile");
@@ -441,6 +465,10 @@ function tabletDevice(
   context.forwardRewindControlsWrapper.style.bottom = "10px";
   context.parentVolumeDiv.id = "parentVolumeResponsiveMd";
   context.playPauseButton.id = "playPauseButtonMd";
+
+  if (context.playlistPanel) {
+    updateMenuHeight(context.playlistPanel, 100, videoHeight);
+  }
 
   // Append the time display element to the parent div
   context.leftControls.prepend(context.forwardRewindControlsWrapper);
@@ -1026,6 +1054,26 @@ function resizeVideoWidth(context: any) {
   // Get device configuration and apply layout
   const config = getDeviceConfig(videoWidth, videoHeight);
   applyDeviceLayout(context, config, videoHeight, chapterMarkers);
+
+  // Update playlistSlot classes based on device config
+  if (context.playlistSlot) {
+    const slot = context.playlistSlot as HTMLElement;
+    // remove prior classes
+    slot.classList.remove(
+      "playlistSlot-sm",
+      "playlistSlot-md",
+      "playlistSlot-lg",
+      "device-mini",
+      "device-smallMobile",
+      "device-responsive",
+      "device-tablet",
+      "device-portrait",
+      "device-large"
+    );
+    // add current classes
+    slot.classList.add(`playlistSlot-${config.sizeClass}`);
+    slot.classList.add(`device-${config.deviceType}`);
+  }
 
   // Handle sidebar-specific layouts
   handleSidebarLayout(context, videoWidth);

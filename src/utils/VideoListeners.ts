@@ -36,6 +36,7 @@ import {
   syncVolumeWithChromecast,
 } from "./CastHandler";
 import { hideError } from "./ErrorElement";
+import { cleanupOverlayAndControls } from "./ShoppableVideo";
 
 // connectedCallback
 const videoListeners = (context: any) => {
@@ -90,6 +91,22 @@ const videoListeners = (context: any) => {
     });
 
     context.addEventListener("playbackidchange", (e: Event) => {
+      // If PiP is active, mark intent to re-enter after the new source is ready
+      try {
+        if ((document as any).pictureInPictureElement) {
+          (context as any)._reenterPiPOnReady = true;
+          (document as any).exitPictureInPicture?.();
+        }
+      } catch {}
+
+      // Perform lightweight teardown before switching sources
+      try {
+        (context as any).destroy?.();
+      } catch {}
+
+      // Hide controls while new source loads
+      context.controlsContainer?.style?.setProperty("--controls", "none");
+
       const customEvent = e as CustomEvent;
       const newPlaybackId = customEvent.detail.playbackId;
 
@@ -151,12 +168,35 @@ const videoListeners = (context: any) => {
       const autoplayEnabled =
         context.hasAttribute("autoplay-shorts") ||
         context.hasAttribute("auto-play") ||
-        context.hasAttribute("autoplay");
+        context.hasAttribute("loop-next");
       const controlsDisplay = window.getComputedStyle(
         context.controlsContainer
       ).display;
 
-      if (autoplayEnabled && controlsDisplay === "none") {
+      if (autoplayEnabled) {
+        // Ensure video is not muted for auto-play
+        context.video.muted = false;
+        context.video.volume = 1;
+
+        // Hide initial play button during loadstart when auto-play is enabled
+        context.controlsContainer.style.setProperty(
+          "--initial-play-button",
+          "none"
+        );
+
+        if (controlsDisplay === "none") {
+          showLoader(context);
+        }
+      }
+    });
+
+    context.video.addEventListener("emptied", () => {
+      const autoplayEnabled =
+        context.hasAttribute("autoplay-shorts") ||
+        context.hasAttribute("auto-play") ||
+        context.hasAttribute("loop-next");
+
+      if (autoplayEnabled) {
         showLoader(context);
       }
     });
@@ -174,6 +214,8 @@ const videoListeners = (context: any) => {
 
       hideLoader(context);
 
+      cleanupOverlayAndControls(context);
+
       context.playPauseButton.disabled = false;
 
       if (context.pauseAfterLoading && !context.resolutionSwitching) {
@@ -181,15 +223,8 @@ const videoListeners = (context: any) => {
         context.pauseAfterLoading = false;
       }
 
-      // If Safari autoplay start-then-pause is requested, pause immediately after first play
-      if (context._autoPlayStartAndPause) {
-        context._autoPlayStartAndPause = false;
-        try {
-          context.video.pause();
-        } catch (e) {
-          console.error("Failed to pause video:", e);
-        }
-      }
+      // Safari should behave the same as other browsers for autoplay
+      // Removed Safari-specific pause logic to ensure consistent behavior
     });
 
     context.video.addEventListener("canplay", () => {
@@ -213,19 +248,24 @@ const videoListeners = (context: any) => {
       context.video.addEventListener("timeupdate", updateTimeDisplay(context));
 
       if (context.hasAutoPlayAttribute === true) {
-        const isSafari = /^((?!chrome|android).)*safari/i.test(
-          navigator.userAgent
-        );
+        // Check if auto-play or loop-next attribute is specifically set (not just autoplay-shorts)
+        const hasAutoPlayAttribute = context.hasAttribute("auto-play");
+        const hasAutoplayNextAttribute = context.hasAttribute("loop-next");
+
         // Ensure inline muted autoplay compatibility on Safari/iOS
         context.video.setAttribute("playsinline", "");
         context.video.setAttribute("webkit-playsinline", "");
         context.video.playsInline = true;
-        context.video.muted = true;
         context.video.autoplay = true;
-        context.video.volume = 0;
 
-        if (isSafari) {
-          context._autoPlayStartAndPause = true;
+        // Only mute for autoplay-shorts, not for auto-play or loop-next attributes
+        if (!hasAutoPlayAttribute && !hasAutoplayNextAttribute) {
+          context.video.muted = true;
+          context.video.volume = 0;
+        } else {
+          // For auto-play or loop-next attributes, ensure video is not muted
+          context.video.muted = false;
+          context.video.volume = 1;
         }
 
         toggleVideoPlayback(
@@ -338,6 +378,7 @@ const videoListeners = (context: any) => {
 
       if (context.loopPlaylistTillEnd) {
         context.next();
+        context.videoEnded = false;
       }
     });
 

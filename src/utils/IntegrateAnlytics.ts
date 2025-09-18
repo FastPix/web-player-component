@@ -49,6 +49,7 @@ interface ExtractedData {
   browser?: string;
   browser_version?: string;
   os_name?: string;
+  player_poster?: string;
   os_version?: string;
   page_url?: string;
   player_autoplay_on?: string;
@@ -109,6 +110,7 @@ const extractAttributes = (context: Context): ExtractedData => {
     "metadata-page-context": "page_context",
     "metadata-sub-property-id": "sub_property_id",
     "metadata-video-content-type": "video_content_type",
+    "metadata-player-poster": "player_poster",
     "metadata-video-drm-type": "video_drm_type",
     "metadata-video-encoding-variant": "video_encoding_variant",
     "metadata-video-language-code": "video_language_code",
@@ -116,8 +118,12 @@ const extractAttributes = (context: Context): ExtractedData => {
     "metadata-video-variant-name": "video_variant_name",
     "metadata-video-cdn": "video_cdn",
     "metadata-cdn": "cdn",
+    "metadata-beacon-domain": "beacon_domain",
     "metadata-video-variant-id": "video_variant_id",
     "metadata-video-series": "video_series",
+    "metadata-video-poster-url": "video_poster_url",
+    "metadata-player-softer-name": "player_software_name",
+    "metadata-player-software-version": "player_software_version",
     "metadata-custom-1": "custom_1",
     "metadata-custom-2": "custom_2",
     "metadata-custom-3": "custom_3",
@@ -157,16 +163,23 @@ export function initializeAnalytics(
   hls: HlsInstance | null,
   Hls: HlsClass | null
 ): void {
-  const data: ExtractedData = extractAttributes(context);
+  let data: ExtractedData = extractAttributes(context);
+  data = {
+    ...data,
+    player_software_name: "fastpix-player-data-monitoring",
+    player_software_version: "1.0.8",
+  };
   const debug = context.hasAttribute("enable-debug");
   const disableCookies = context.hasAttribute("disable-cookies");
   const respectDoNotTrack = context.hasAttribute("respect-do-not-track");
   const disabledDataMonitoring = context.hasAttribute(
     "disable-data-monitoring"
   );
-  const hasWorkspaceKey = context.hasAttribute("metadata-workspace-key");
+  const workspaceKey = context.getAttribute("metadata-workspace-key");
+  const shouldTrack = !disabledDataMonitoring && !!workspaceKey;
+  const configDomain = context.getAttribute("config-domain") || "metrix.ws";
 
-  if (!disabledDataMonitoring || !hasWorkspaceKey) {
+  if (shouldTrack) {
     fastpixMetrix.tracker(video, {
       debug,
       hlsjs: hls,
@@ -174,6 +187,7 @@ export function initializeAnalytics(
       disableCookies,
       data,
       respectDoNotTrack,
+      configDomain,
     });
   }
 }

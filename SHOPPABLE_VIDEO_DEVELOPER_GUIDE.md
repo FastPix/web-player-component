@@ -720,3 +720,4 @@ if (player.getAttribute('theme') === 'shoppable-shorts') {
 3. **Check Network**: Ensure player.js is loading correctly
 4. **Inspect Element**: Check if cart button exists in DOM but is hidden
 5. **Force Show**: Use `player.showCartButton()` or `player.ensureShoppableShortsCartButton()` to debug visibility issues
+ 

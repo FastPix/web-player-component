@@ -1,6 +1,6 @@
 {
   "name": "@fastpix/fp-player",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "FastPix Player SDK is a customizable video player for on-demand and live streaming.",
   "main": "./dist/player.js",
   "files": [
@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "format": "prettier --write \"src/**/*.ts\"",
-    "build": "npm run format && esbuild src/player.ts --target=es2019 --bundle --outfile=./dist/player.js",
+    "build": "npm run format && esbuild src/player.ts --target=es2019 --bundle --minify --outfile=./dist/player.js",
     "format:css": "prettier --write \"src/utils/innerHtml.ts\""
   },
   "keywords": [
@@ -30,7 +30,7 @@
   "author": "FastPix, Inc",
   "license": "MIT",
   "dependencies": {
-    "@fastpix/video-data-core": "^1.0.3",
+    "@fastpix/video-data-core": "^1.0.5",
     "hls.js": "^1.5.15",
     "test-live-package": "^1.0.8"
   },

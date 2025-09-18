@@ -32,6 +32,9 @@ const isMouseOverControl = (context: any) => {
     context.resolutionMenuButton,
     context.playbackRateDiv,
     context.playbackRateButton,
+    context.nextButton,
+    context.prevButton,
+    context.playlistButton,
     context.castButton,
   ];
 
@@ -59,6 +62,12 @@ const showControls = (context: any) => {
   }
   if (context.controlsContainer.contains(context.castButton)) {
     context.castButton.style.opacity = "1";
+  }
+  if (context.controlsContainer.contains(context.playlistButton)) {
+    context.playlistButton.style.opacity = "1";
+  }
+  if (context.controlsContainer.contains(context.playlistSlot)) {
+    context.playlistSlot.style.opacity = "1";
   }
   context.leftControls.style.opacity = "1";
   context.resolutionMenu.style.opacity = "1";
