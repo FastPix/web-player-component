@@ -722,6 +722,40 @@ bottom: 10px;
     background-color: var(--accent-color);
 }
 
+/* Skip Intro button */
+.skipIntroButton,
+.nextEpisodeButton {
+    position: absolute;
+    bottom: 60px; /* slightly above the progress bar */
+    background-color: #f5f5f5;
+    color: black;
+    font-weight: 600;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    display: none;
+    z-index: 1500;
+    font-size: 14px;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+
+
+.controlsContainer .skipIntroButton:hover,
+.controlsContainer .nextEpisodeButton:hover {
+  background-color: var(--accent-color);
+  color: #f5f5f5;
+}
+
+.skipIntroButton {
+    left: 20px;
+}
+
+.nextEpisodeButton {
+    right: 20px;
+}
+
 .progressBar.initialized {
     display: var(--progress-bar, flex);
  }

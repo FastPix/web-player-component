@@ -28,6 +28,8 @@ const isMouseOverControl = (context: any) => {
     context.timeDisplay,
     context.volumeButton,
     context.volumeiOSButton,
+    context.skipIntroButton,
+    context.nextEpisodeButton,
     context.resolutionMenu,
     context.resolutionMenuButton,
     context.playbackRateDiv,
@@ -55,6 +57,8 @@ const showControls = (context: any) => {
   context.volumeButton.style.opacity = "1";
   context.playbackRateButton.style.opacity = "1";
   context.volumeiOSButton.style.opacity = "1";
+  context.skipIntroButton.style.opacity = "1";
+  context.nextEpisodeButton.style.opacity = "1";
   context.resolutionMenuButton.style.opacity = "1";
   context.titleElement.style.opacity = "1";
   if (context.controlsContainer.contains(context.mobileControls)) {

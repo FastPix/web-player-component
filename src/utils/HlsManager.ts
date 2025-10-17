@@ -25,12 +25,202 @@ const configHls: Partial<Hls.HlsConfig> = {
   abrEwmaSlowLive: 8.0,
   abrMaxWithRealBitrate: true, // Use real bitrate for level switching
   drmSystems: {
-    "com.widevine.alpha": {},
-    "com.apple.fps": {},
+    "com.widevine.alpha": {
+      robustness: "SW_SECURE_CRYPTO",
+    },
+    "com.apple.fps": {
+      robustness: "SW_SECURE_CRYPTO",
+    },
   },
 };
 
 const hlsInstance: Hls | null = null;
+
+async function setupSafariFairPlayDRM(context: any) {
+  const fairplayConfig = context.config.drmSystems["com.apple.fps"];
+
+  if (!fairplayConfig || !fairplayConfig.licenseUrl) {
+    console.warn("No FairPlay license URL configured for Safari");
+    return;
+  }
+
+  console.log(
+    "Setting up Safari FairPlay DRM with license URL:",
+    fairplayConfig.licenseUrl
+  );
+  console.log("FairPlay config:", fairplayConfig);
+
+  // Check if we're actually in Safari and if FairPlay is supported
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  console.log("Browser detection - Safari:", isSafari);
+  console.log("Video element:", context.video);
+  console.log("Video src:", context.video.src);
+  console.log(
+    "Video canPlayType('application/vnd.apple.mpegurl'):",
+    context.video.canPlayType("application/vnd.apple.mpegurl")
+  );
+
+  // Set up DRM robustness level to avoid warnings for both FairPlay and Widevine
+  console.log("Setting up DRM robustness level");
+  try {
+    // Try FairPlay first (for Safari)
+    try {
+      const fairplayKeySystemAccess =
+        await navigator.requestMediaKeySystemAccess("com.apple.fps.1_0", [
+          {
+            initDataTypes: ["cenc"],
+            audioCapabilities: [
+              {
+                contentType: 'audio/mp4;codecs="mp4a.40.2"',
+                robustness: "SW_SECURE_CRYPTO",
+              },
+            ],
+            videoCapabilities: [
+              {
+                contentType: 'video/mp4;codecs="avc1.42E01E"',
+                robustness: "SW_SECURE_CRYPTO",
+              },
+            ],
+          },
+        ]);
+
+      console.log(
+        "FairPlay key system access granted:",
+        fairplayKeySystemAccess
+      );
+      const fairplayMediaKeys = await fairplayKeySystemAccess.createMediaKeys();
+      await context.video.setMediaKeys(fairplayMediaKeys);
+      console.log("FairPlay MediaKeys set successfully");
+    } catch (fairplayError) {
+      console.log("FairPlay not available, trying Widevine:", fairplayError);
+
+      // Try Widevine (for Chrome and other browsers)
+      try {
+        const widevineKeySystemAccess =
+          await navigator.requestMediaKeySystemAccess("com.widevine.alpha", [
+            {
+              initDataTypes: ["cenc"],
+              audioCapabilities: [
+                {
+                  contentType: 'audio/mp4;codecs="mp4a.40.2"',
+                  robustness: "SW_SECURE_CRYPTO",
+                },
+              ],
+              videoCapabilities: [
+                {
+                  contentType: 'video/mp4;codecs="avc1.42E01E"',
+                  robustness: "SW_SECURE_CRYPTO",
+                },
+              ],
+            },
+          ]);
+
+        console.log(
+          "Widevine key system access granted:",
+          widevineKeySystemAccess
+        );
+        const widevineMediaKeys =
+          await widevineKeySystemAccess.createMediaKeys();
+        await context.video.setMediaKeys(widevineMediaKeys);
+        console.log("Widevine MediaKeys set successfully");
+      } catch (widevineError) {
+        console.warn("Widevine not available:", widevineError);
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to set up DRM robustness level:", error);
+  }
+
+  // Add debugging for all video events
+  context.video.addEventListener("loadstart", () => {
+    console.log("Video loadstart event");
+  });
+
+  context.video.addEventListener("loadedmetadata", () => {
+    console.log("Video loadedmetadata event");
+  });
+
+  context.video.addEventListener("canplay", () => {
+    console.log("Video canplay event");
+  });
+
+  // Handle FairPlay key message events
+  console.log("Adding webkitkeymessage event listener to video element");
+  context.video.addEventListener("webkitkeymessage", async (event: any) => {
+    console.log("=== SAFARI FAIRPLAY EVENT FIRED ===");
+    console.log("Safari FairPlay key message event:", event);
+    console.log("Event messageType:", event.messageType);
+    console.log(
+      "Event message length:",
+      event.message ? event.message.byteLength : "no message"
+    );
+    console.log("Event target:", event.target);
+    console.log("Event currentTarget:", event.currentTarget);
+
+    try {
+      if (event.messageType === "certificate-request") {
+        console.log("Handling certificate request");
+        // Handle certificate request - Safari might need this to be handled properly
+        const certUrl =
+          fairplayConfig.certificateUrl || fairplayConfig.serverCertificateUrl;
+        if (certUrl) {
+          console.log("Fetching certificate from:", certUrl);
+          const response = await fetch(certUrl);
+          const certificate = await response.arrayBuffer();
+
+          // Send certificate back to Safari
+          const certEvent = new (window as any).WebKitMediaKeyMessageEvent(
+            "webkitkeymessage",
+            {
+              message: certificate,
+              messageType: "certificate",
+            }
+          );
+          context.video.dispatchEvent(certEvent);
+        }
+      } else if (event.messageType === "license-request") {
+        console.log("Handling license request - making license URL call");
+        const spc = event.message;
+        const licenseUrl = fairplayConfig.licenseUrl;
+
+        console.log("Requesting FairPlay license from:", licenseUrl);
+
+        // Send SPC to license server
+        const response = await fetch(licenseUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+          },
+          body: spc,
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `License request failed: ${response.status} ${response.statusText}`
+          );
+        }
+
+        const ckc = await response.arrayBuffer();
+        console.log("Received FairPlay license response");
+
+        // Send CKC back to Safari
+        const keyEvent = new (window as any).WebKitMediaKeyMessageEvent(
+          "webkitkeymessage",
+          {
+            message: ckc,
+            messageType: "license",
+          }
+        );
+
+        context.video.dispatchEvent(keyEvent);
+      } else {
+        console.log("Unknown messageType:", event.messageType);
+      }
+    } catch (error) {
+      console.error("FairPlay license request failed:", error);
+    }
+  });
+}
 
 function setupErrorHandling(context: any, streamType: string | null) {
   let networkErrorLogged = false;
@@ -256,6 +446,14 @@ function initializeHLS(
     });
   } else if (context.video.canPlayType("application/vnd.apple.mpegurl")) {
     // Safari or other native HLS-supporting browsers
+    if (context.debugAttribute) {
+      console.log("Using native HLS support (Safari)");
+      console.log("DRM configuration for Safari:", context.config.drmSystems);
+    }
+
+    // Set up Safari FairPlay DRM handling
+    setupSafariFairPlayDRM(context);
+
     context._src = url;
     context.video.src = url;
   } else {

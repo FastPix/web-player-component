@@ -94,19 +94,15 @@ const videoListeners = (context: any) => {
       // If PiP is active, mark intent to re-enter after the new source is ready
       try {
         if ((document as any).pictureInPictureElement) {
-          (context as any)._reenterPiPOnReady = true;
+          context._reenterPiPOnReady = true;
           (document as any).exitPictureInPicture?.();
         }
       } catch {}
 
-      // Perform lightweight teardown before switching sources
-      try {
-        (context as any).destroy?.();
-      } catch {}
+      // Hide controls while loading next
+      context.controlsContainer.style.setProperty("--controls", "none");
 
-      // Hide controls while new source loads
-      context.controlsContainer?.style?.setProperty("--controls", "none");
-
+      // Note: Avoid destroying or altering controls here to prevent interrupting in-flight loads
       const customEvent = e as CustomEvent;
       const newPlaybackId = customEvent.detail.playbackId;
 
@@ -321,6 +317,46 @@ const videoListeners = (context: any) => {
       const bufferedPercentage = (bufferEnd / context.video.duration) * 100;
       const seekedPercentage = Math.min((currentTime / duration) * 100, 100);
       context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) 100%)`;
+
+      // Toggle Skip Intro button visibility within configured window
+      if (
+        context.skipIntroButton &&
+        context.skipIntroStart != null &&
+        context.skipIntroEnd != null
+      ) {
+        if (
+          Number.isFinite(context.skipIntroStart) &&
+          Number.isFinite(context.skipIntroEnd) &&
+          currentTime >= context.skipIntroStart &&
+          currentTime <= context.skipIntroEnd
+        ) {
+          context.skipIntroButton.style.display = "block";
+        } else {
+          context.skipIntroButton.style.display = "none";
+        }
+      } else if (context.skipIntroButton) {
+        // Attributes missing: ensure button is hidden
+        context.skipIntroButton.style.display = "none";
+      }
+
+      // Toggle Next Episode button visibility from configured time till end
+      if (
+        context.nextEpisodeButton &&
+        context.nextEpisodeOverlayStart != null &&
+        Number.isFinite(context.nextEpisodeOverlayStart)
+      ) {
+        const hasNext =
+          Array.isArray(context.playlist) &&
+          context.currentIndex < (context.playlist?.length ?? 0) - 1;
+        if (hasNext && currentTime >= context.nextEpisodeOverlayStart) {
+          context.nextEpisodeButton.style.display = "block";
+        } else {
+          context.nextEpisodeButton.style.display = "none";
+        }
+      } else if (context.nextEpisodeButton) {
+        // Attribute missing: ensure button is hidden
+        context.nextEpisodeButton.style.display = "none";
+      }
 
       if (duration > 0) {
         context.progressBar.value = seekedPercentage;
@@ -548,6 +584,33 @@ const videoListeners = (context: any) => {
         activeChapter(context);
       }
     });
+
+    // Click handler for Skip Intro button
+    if (context.skipIntroButton) {
+      context.skipIntroButton.addEventListener("click", () => {
+        if (context.skipIntroEnd == null) return;
+        const duration = context.video.duration;
+        const target = Math.min(
+          (Number(context.skipIntroEnd) || 0) + 1,
+          Number.isFinite(duration)
+            ? Math.max(0, duration - 0.1)
+            : (Number(context.skipIntroEnd) || 0) + 1
+        );
+        const bufferEnd =
+          context.video.buffered.length > 0
+            ? context.video.buffered.end(context.video.buffered.length - 1)
+            : 0;
+
+        handleChromecastSeek(target);
+        if (!isChromecastConnected()) {
+          handleLocalVideoSeek(context, target, bufferEnd);
+          handlePlaybackAfterSeek(context);
+          hideLoaderIfNeeded(target, bufferEnd, context);
+        }
+
+        // Do not hide immediately; timeupdate will hide it after reaching end+1s
+      });
+    }
 
     context.volumeControl.addEventListener("input", () => {
       const primaryColor = context.getAttribute("primary-color") ?? "#F5F5F5";

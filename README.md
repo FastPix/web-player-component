@@ -938,6 +938,14 @@ Add a playlist and navigate programmatically or with the default UI.
   // player.next();
   // player.previous();
 
+  // Directly replace current source without changing the playlist
+  // player.loadByPlaybackId('PLAYBACK_ID', {
+  //   token: 'optional-token',
+  //   drmToken: 'optional-drm-token',
+  //   customDomain: 'stream.fastpix.app',
+  //   emitPlaybackChange: true
+  // });
+
   // destroy(): Lightweight teardown before switching sources
   // Typically not needed for standard playlist navigation (handled internally),
   // but useful if you implement custom source-switching flows.

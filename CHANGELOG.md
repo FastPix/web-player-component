@@ -2,7 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.8] - 2025-09-18
+## [1.0.9]
+- Added `skip-intro-start` and `skip-intro-end` and `next-episode-button-overlay` buttons support.
+- Fixed shoppable video hotspot issue
+- Added `player-buttons` slot
+
+## [1.0.8] 
 
 ### New & Improved: Playlist
 - Added playlist APIs: `addPlaylist(playlist)`, `next()`, `previous()`, `selectEpisodeByPlaybackId(playbackId)`

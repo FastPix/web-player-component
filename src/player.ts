@@ -97,6 +97,12 @@ function normalizePlaylistInput(playlistJson: any[]): any[] {
         token: it.token ?? it["token"],
         drmToken: it.drmToken ?? it["drm-token"],
         customDomain: it.customDomain ?? it["custom-domain"],
+
+        // Overlay window fields (seconds)
+        skipIntroStart: it.skipIntroStart ?? it["skip-intro-start"],
+        skipIntroEnd: it.skipIntroEnd ?? it["skip-intro-end"],
+        nextEpisodeOverlay:
+          it.nextEpisodeOverlay ?? it["next-episode-button-overlay"],
         title: it.title,
         thumbnail: it.thumbnail,
         duration: it.duration,
@@ -226,6 +232,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
   backwardSeekOffset?: number | null;
   parentVolumeDiv: HTMLDivElement;
   volumeButton: HTMLButtonElement;
+  skipIntroButton: HTMLButtonElement;
+  nextEpisodeButton: HTMLButtonElement;
   volumeiOSButton: HTMLButtonElement;
   volumeControl: HTMLInputElement;
   primaryColor?: string | null;
@@ -262,6 +270,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   playlistItems?: HTMLDivElement;
   externalPlaylistOpen: boolean = false;
   playlistSlot?: HTMLDivElement;
+  playerButtonsSlot?: HTMLDivElement;
   cartButton!: HTMLButtonElement;
   cartSidebar!: HTMLDivElement;
   isCartOpen: boolean = false;
@@ -369,6 +378,20 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.progressBarContainer = documentObject.createElement("div");
     this.progressBarContainer.className = "progressBarContainer";
     this.controlsContainer.appendChild(this.progressBarContainer);
+
+    // Skip Intro button (initially hidden)
+    this.skipIntroButton = documentObject.createElement("button");
+    this.skipIntroButton.className = "skipIntroButton";
+    this.skipIntroButton.textContent = "Skip intro";
+    this.skipIntroButton.style.display = "none";
+    this.controlsContainer.appendChild(this.skipIntroButton);
+
+    // Next Episode button (initially hidden)
+    this.nextEpisodeButton = documentObject.createElement("button");
+    this.nextEpisodeButton.className = "nextEpisodeButton";
+    this.nextEpisodeButton.textContent = "Next episode";
+    this.nextEpisodeButton.style.display = "none";
+    this.controlsContainer.appendChild(this.nextEpisodeButton);
 
     // Create a thumbnail Seeking div
     this.thumbnail = documentObject.createElement("div");
@@ -805,6 +828,47 @@ class FastPixPlayer extends windowObject.HTMLElement {
     // Decide initial index using default-playback-id if provided; fallback to first item
     this.currentIndex = computeInitialIndexForPlaylist(this);
 
+    // Apply per-item overlay attributes for initially selected item
+    try {
+      const current = this.playlist[this.currentIndex] ?? {};
+      const sStart =
+        current?.skipIntroStart != null
+          ? parseFloat(current.skipIntroStart)
+          : NaN;
+      const sEnd =
+        current?.skipIntroEnd != null ? parseFloat(current.skipIntroEnd) : NaN;
+      const nextEp =
+        current?.nextEpisodeOverlay != null
+          ? parseFloat(current.nextEpisodeOverlay)
+          : NaN;
+
+      // Clear prior attributes
+      this.removeAttribute("skip-intro-start");
+      this.removeAttribute("skip-intro-end");
+      this.removeAttribute("next-episode-button-overlay");
+
+      if (Number.isFinite(sStart)) {
+        this.setAttribute("skip-intro-start", String(sStart));
+        (this as any).skipIntroStart = sStart;
+      } else {
+        (this as any).skipIntroStart = null;
+      }
+
+      if (Number.isFinite(sEnd)) {
+        this.setAttribute("skip-intro-end", String(sEnd));
+        (this as any).skipIntroEnd = sEnd;
+      } else {
+        (this as any).skipIntroEnd = null;
+      }
+
+      if (Number.isFinite(nextEp)) {
+        this.setAttribute("next-episode-button-overlay", String(nextEp));
+        (this as any).nextEpisodeOverlayStart = nextEp;
+      } else {
+        (this as any).nextEpisodeOverlayStart = null;
+      }
+    } catch {}
+
     if (typeof this.updatePlaylistControlsVisibility === "function") {
       this.updatePlaylistControlsVisibility();
     }
@@ -840,6 +904,47 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
         // Show loader for smooth transition
         showLoader(this);
+
+        // Apply per-item overlays as attributes for the upcoming item
+        try {
+          const sStart =
+            nextItem?.skipIntroStart != null
+              ? parseFloat(nextItem.skipIntroStart)
+              : NaN;
+          const sEnd =
+            nextItem?.skipIntroEnd != null
+              ? parseFloat(nextItem.skipIntroEnd)
+              : NaN;
+          const nextEp =
+            nextItem?.nextEpisodeOverlay != null
+              ? parseFloat(nextItem.nextEpisodeOverlay)
+              : NaN;
+
+          this.removeAttribute("skip-intro-start");
+          this.removeAttribute("skip-intro-end");
+          this.removeAttribute("next-episode-button-overlay");
+
+          if (Number.isFinite(sStart)) {
+            this.setAttribute("skip-intro-start", String(sStart));
+            (this as any).skipIntroStart = sStart;
+          } else {
+            (this as any).skipIntroStart = null;
+          }
+
+          if (Number.isFinite(sEnd)) {
+            this.setAttribute("skip-intro-end", String(sEnd));
+            (this as any).skipIntroEnd = sEnd;
+          } else {
+            (this as any).skipIntroEnd = null;
+          }
+
+          if (Number.isFinite(nextEp)) {
+            this.setAttribute("next-episode-button-overlay", String(nextEp));
+            (this as any).nextEpisodeOverlayStart = nextEp;
+          } else {
+            (this as any).nextEpisodeOverlayStart = null;
+          }
+        } catch {}
 
         this.loadByPlaybackId(nextItem.playbackId, {
           token: nextItem.token,
@@ -887,6 +992,47 @@ class FastPixPlayer extends windowObject.HTMLElement {
         }
         // Show loader for smooth transition
         showLoader(this);
+
+        // Apply per-item overlays as attributes for the upcoming item
+        try {
+          const sStart =
+            prevItem?.skipIntroStart != null
+              ? parseFloat(prevItem.skipIntroStart)
+              : NaN;
+          const sEnd =
+            prevItem?.skipIntroEnd != null
+              ? parseFloat(prevItem.skipIntroEnd)
+              : NaN;
+          const nextEp =
+            prevItem?.nextEpisodeOverlay != null
+              ? parseFloat(prevItem.nextEpisodeOverlay)
+              : NaN;
+
+          this.removeAttribute("skip-intro-start");
+          this.removeAttribute("skip-intro-end");
+          this.removeAttribute("next-episode-button-overlay");
+
+          if (Number.isFinite(sStart)) {
+            this.setAttribute("skip-intro-start", String(sStart));
+            (this as any).skipIntroStart = sStart;
+          } else {
+            (this as any).skipIntroStart = null;
+          }
+
+          if (Number.isFinite(sEnd)) {
+            this.setAttribute("skip-intro-end", String(sEnd));
+            (this as any).skipIntroEnd = sEnd;
+          } else {
+            (this as any).skipIntroEnd = null;
+          }
+
+          if (Number.isFinite(nextEp)) {
+            this.setAttribute("next-episode-button-overlay", String(nextEp));
+            (this as any).nextEpisodeOverlayStart = nextEp;
+          } else {
+            (this as any).nextEpisodeOverlayStart = null;
+          }
+        } catch {}
 
         this.loadByPlaybackId(prevItem.playbackId, {
           token: prevItem.token,
@@ -1036,6 +1182,44 @@ class FastPixPlayer extends windowObject.HTMLElement {
     if (index !== -1) {
       this.currentIndex = index; // 🧠 update the internal pointer
       const item = this.playlist[this.currentIndex];
+
+      // Apply per-item overlays as attributes for the selected item
+      try {
+        const sStart =
+          item?.skipIntroStart != null ? parseFloat(item.skipIntroStart) : NaN;
+        const sEnd =
+          item?.skipIntroEnd != null ? parseFloat(item.skipIntroEnd) : NaN;
+        const nextEp =
+          item?.nextEpisodeOverlay != null
+            ? parseFloat(item.nextEpisodeOverlay)
+            : NaN;
+
+        this.removeAttribute("skip-intro-start");
+        this.removeAttribute("skip-intro-end");
+        this.removeAttribute("next-episode-button-overlay");
+
+        if (Number.isFinite(sStart)) {
+          this.setAttribute("skip-intro-start", String(sStart));
+          (this as any).skipIntroStart = sStart;
+        } else {
+          (this as any).skipIntroStart = null;
+        }
+
+        if (Number.isFinite(sEnd)) {
+          this.setAttribute("skip-intro-end", String(sEnd));
+          (this as any).skipIntroEnd = sEnd;
+        } else {
+          (this as any).skipIntroEnd = null;
+        }
+
+        if (Number.isFinite(nextEp)) {
+          this.setAttribute("next-episode-button-overlay", String(nextEp));
+          (this as any).nextEpisodeOverlayStart = nextEp;
+        } else {
+          (this as any).nextEpisodeOverlayStart = null;
+        }
+      } catch {}
+
       this.loadByPlaybackId(playbackId, {
         token: item.token,
         drmToken: item.drmToken,
@@ -1128,7 +1312,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
       this.prevEpisodeButton!.style.opacity = isFirstEpisode ? "0.5" : "1";
       this.nextEpisodeButton!.style.opacity = isLastEpisode ? "0.5" : "1";
     } else {
-      
       // Hide episode controls for standalone content
       this.episodeControlsContainer!.style.display = "none";
     }
@@ -1265,6 +1448,26 @@ class FastPixPlayer extends windowObject.HTMLElement {
         this.streamType ?? ""
       );
     });
+
+    // Next episode click
+    if (this.nextEpisodeButton) {
+      this.nextEpisodeButton.addEventListener("click", () => {
+        try {
+          if (typeof (this as any).customNext === "function") {
+            (this as any).customNext.call(this, this);
+            return;
+          } else {
+            this.next();
+          }
+        } catch (err) {
+          console.error(
+            "customNext handler threw an error; falling back to default next()",
+            err
+          );
+        }
+        this.next();
+      });
+    }
 
     // Add a global click handler to ensure play/pause button always works
     this.wrapper.addEventListener(
@@ -1409,6 +1612,29 @@ class FastPixPlayer extends windowObject.HTMLElement {
       });
       slotted.forEach((el) => this.playlistSlot?.appendChild(el));
     }
+
+    // Handle player-buttons slot
+    this.playerButtonsSlot = document.createElement("div");
+    this.playerButtonsSlot.className = "player-buttons-slot";
+    this.playerButtonsSlot.style.position = "absolute";
+    this.playerButtonsSlot.style.top = "20px";
+    this.playerButtonsSlot.style.right = "20px";
+    this.playerButtonsSlot.style.zIndex = "1000";
+    this.playerButtonsSlot.style.display = "flex";
+    this.playerButtonsSlot.style.gap = "10px";
+    this.controlsContainer.appendChild(this.playerButtonsSlot);
+
+    // Move any player-buttons slotted children into the slot container
+    const playerButtonsSlotted = Array.from(this.children).filter(
+      (el: Element) => {
+        const slotAttr = el.getAttribute("slot");
+        const dataSlot = el.getAttribute("data-fastpix-slot");
+        return slotAttr === "player-buttons" || dataSlot === "player-buttons";
+      }
+    );
+    playerButtonsSlotted.forEach((el) =>
+      this.playerButtonsSlot?.appendChild(el)
+    );
 
     // playbackRateButton click handler
     playbackRateButtonClickHandler(this);
@@ -1704,10 +1930,30 @@ class FastPixPlayer extends windowObject.HTMLElement {
   }
 
   /**
+   * Remove all hotspots from the player
+   */
+  removeAllHotspots() {
+    const hotspots = this.wrapper.querySelectorAll(".hotspot");
+    hotspots.forEach((hotspot) => {
+      if (hotspot.parentNode) {
+        hotspot.parentNode.removeChild(hotspot);
+      }
+    });
+    this.isHotspotVisible = false;
+  }
+
+  /**
    * Returns the internal playlist slot container for custom UI injection
    */
   public getPlaylistSlot(): HTMLDivElement | null {
     return this.playlistSlot ?? null;
+  }
+
+  /**
+   * Returns the internal player-buttons slot container for custom UI injection
+   */
+  public getPlayerButtonsSlot(): HTMLDivElement | null {
+    return this.playerButtonsSlot ?? null;
   }
 
   public setNextHandler(handler: (ctx: any) => void) {

@@ -718,6 +718,28 @@ function receiveAttributes(context: any) {
 
   context.forwardSeekAttribute = context.getAttribute("forward-seek-offset");
   context.backwardSeekAttribute = context.getAttribute("backward-seek-offset");
+
+  // Skip Intro attributes (in seconds)
+  const skipIntroStartAttr = context.getAttribute("skip-intro-start");
+  const skipIntroEndAttr = context.getAttribute("skip-intro-end");
+  const parsedSkipStart =
+    skipIntroStartAttr != null ? parseFloat(skipIntroStartAttr) : NaN;
+  const parsedSkipEnd =
+    skipIntroEndAttr != null ? parseFloat(skipIntroEndAttr) : NaN;
+  context.skipIntroStart = Number.isFinite(parsedSkipStart)
+    ? parsedSkipStart
+    : null;
+  context.skipIntroEnd = Number.isFinite(parsedSkipEnd) ? parsedSkipEnd : null;
+
+  // Next episode overlay attribute (seconds)
+  const nextEpisodeOverlayAttr = context.getAttribute(
+    "next-episode-button-overlay"
+  );
+  const parsedNextOverlay =
+    nextEpisodeOverlayAttr != null ? parseFloat(nextEpisodeOverlayAttr) : NaN;
+  context.nextEpisodeOverlayStart = Number.isFinite(parsedNextOverlay)
+    ? parsedNextOverlay
+    : null;
 }
 
 function DrmSetup(context: any) {
