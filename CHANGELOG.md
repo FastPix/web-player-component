@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.10]
+### Changed
+- Updated npm authentication from Classic token to Granular token for improved security and fine-grained permissions.
+
 ## [1.0.9]
 - Added `skip-intro-start` and `skip-intro-end` and `next-episode-button-overlay` buttons support.
 - Fixed shoppable video hotspot issue
