@@ -1,5 +1,13 @@
 export const skeleton: string = `
-   
+
+/* Register --progressBar-thumb-position as a typed property so CSS can
+   interpolate it smoothly when the value changes (e.g. during seeks). */
+@property --progressBar-thumb-position {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
 /* CSS Variables */
 :host {
     --icon-width: 24px;
@@ -23,7 +31,10 @@ export const skeleton: string = `
     --shoppable-sidebar-width: 30%;
     --shoppable-sidebar-background-color: rgba(255, 255, 255, 0.75);
     --play-button-initialized: flex;
+    --mobile-play-button: flex;
+    --mobile-play-button-initialized: flex;
     --player-border-radius: 0px;
+    --progress-bar-track-unfilled: rgba(255, 255, 255, 0.14);
     aspect-ratio: 16 / 9;
     display: block; /* Ensure the custom element is a block-level element */
     font-family: Arial, sans-serif;
@@ -387,9 +398,11 @@ video::-webkit-media-text-track-display {
 }
 
 .parent {
+    position: relative;             /* Anchor bottom gradient to the player */
     display: flex;
     row-gap: 1.875rem;
     height: 100%;
+    overflow: hidden;               /* Keep gradient inside rounded corners */
     transition: all 1s ease-in-out;  /* Smooth resizing */
 }
 
@@ -399,8 +412,13 @@ video::-webkit-media-text-track-display {
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 50px; /* Adjust the height as needed */
-     background: linear-gradient(to bottom, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.3)); /* Adjust the gradient as needed */
+    height: 80px; /* Softer scrim, keeps controls colors closer to original */
+    background: linear-gradient(
+        to top,
+        rgba(0, 0, 0, 0.45),
+        rgba(0, 0, 0, 0.20),
+        rgba(0, 0, 0, 0)
+    ); /* Bottom gradient shadow similar to Mux */
     pointer-events: none; /* Allow clicks to pass through the gradient background */
     border-radius: 0 0 10px 10px; /* Apply border-radius to match the video's border-radius */
 }
@@ -758,10 +776,15 @@ bottom: 10px;
 
 .progressBar.initialized {
     display: var(--progress-bar, flex);
+    /* When --progress-bar-invisible: 1, bar is hidden but still receives hover/click for timestamp preview */
+    opacity: calc(1 - var(--progress-bar-invisible, 0));
+    pointer-events: auto;
  }
 
 .progressBar.initialized.mobile {
     display: var(--progress-bar, flex);
+    opacity: calc(1 - var(--progress-bar-invisible, 0));
+    pointer-events: auto;
 }
 
 /* Only Firefox */
@@ -777,7 +800,7 @@ bottom: 10px;
 #progressBar {
     position: absolute;
     height: 4.5px;
-    bottom: 46px;
+    bottom: var(--seekbar-bottom, 46px);
     left: 20px;
     right: 20px;
     margin: 0;
@@ -789,7 +812,7 @@ bottom: 10px;
 #progressBarResponsiveMd {
     position: absolute;
     height: 3.5px;
-    bottom: 46px;
+    bottom: var(--seekbar-bottom, 46px);
     left: 20px;
     right: 20px;
     cursor: pointer;
@@ -830,58 +853,44 @@ bottom: 10px;
     height: 3px;
     width: calc(100% - 40px);
     -moz-appearance: none;
-    background-color: rgba(255, 255, 255, 0.2); 
+    cursor: pointer;
+    background-color: var(--progress-bar-track-unfilled);
 }
 
-/* Styling the volume control thumb */
+/* Seekbar thumb — WebKit */
 .progressBar::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 12px; /* Adjust thumb width as needed */
-    height: 12px; /* Adjust thumb height as needed */
-    background-color: var(--accent-color); /* Thumb color */
-    border-radius: 50%; /* Make thumb round */
-    cursor: pointer; /* Show pointer cursor */
-    visibility: hidden;
+    width: 12px;
+    height: 12px;
+    background-color: var(--accent-color);
+    border-radius: 50%;
     cursor: pointer;
-    position: relative; /* Required for positioning the dot */
+    visibility: hidden;
+    /* Center the 12px thumb on the 3px track */
+    margin-top: -2px;
 }
 
-/* Styling the volume control thumb on hover */
+/* Show thumb on hover */
 .progressBar:hover::-webkit-slider-thumb {
-    visibility: visible; /* Show the thumb on hover */
+    visibility: visible;
 }
 
-/* Additional styles for the thumb */
-.progressBar::-webkit-slider-thumb::before {
-    content: ""; /* No content for the pseudo-element */
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 6px; /* Adjust the size of the dot as needed */
-    height: 6px; /* Adjust the size of the dot as needed */
-    background-color: var(--accent-color); /* Color of the dot */
-    border-radius: 50%;}
-
-/* Styling the volume control thumb for Firefox */
+/* Seekbar thumb — Firefox */
 .progressBar::-moz-range-thumb {
     -moz-appearance: none;
-    width: 12px; /* Adjust thumb width as needed */
-    height: 12px; /* Adjust thumb height as needed */
-    background-color: var(--accent-color); /* Thumb color */
-    border-radius: 50%; /* Make thumb round */
-    cursor: pointer; /* Show pointer cursor */
-    visibility: hidden;
+    width: 12px;
+    height: 12px;
+    background-color: var(--accent-color);
+    border-radius: 50%;
     cursor: pointer;
-    position: relative; /* Required for positioning the dot */
-    border: none; /* Remove default border */
-    -moz-appearance: none;
+    visibility: hidden;
+    border: none;
 }
 
-/* Styling the volume control thumb on hover for Firefox */
+/* Show thumb on hover — Firefox */
 .progressBar:hover::-moz-range-thumb {
-    visibility: visible; /* Show the thumb on hover */
+    visibility: visible;
     -moz-appearance: none;
 }
 
@@ -940,7 +949,7 @@ width: 30px;
 }
 
 .mobile #progressBarResponsive {
-    bottom: 33px; !important
+    bottom: var(--seekbar-bottom, 33px) !important;
 }
 
 #timeDisplayResponsiveMd {
@@ -981,7 +990,7 @@ width: 30px;
 
 #progressBarResponsive {
     position: absolute;
-    bottom: 2.5rem;
+    bottom: var(--seekbar-bottom, 2.5rem);
     height: 4px;
     left: 20px;
     right: 20px;
@@ -1010,7 +1019,7 @@ width: 30px;
     position: absolute;
     height: 3px;
     width: 84%;
-    bottom: 40px;
+    bottom: var(--seekbar-bottom, 40px);
     display: none;
 }
 
@@ -1047,6 +1056,7 @@ width: 30px;
     right: 2%;
     color: var(--primary-color);
     font-family: Arial, sans-serif;
+    display: none; /* Legacy click timestamp UI – disabled in favor of hover pill */
 }
 
 #bottomRightDiv {
@@ -1402,6 +1412,10 @@ playbackRateButtonInitial,
     display: var(--play-button-initialized, flex) !important;
 }
 
+.initialPlayBigButton.initialplayPauseButtonStyle.initialized.showPlayButton.mobile {
+    display: var(--mobile-play-button-initialized, flex) !important;
+}
+
 .initialPlayBigButton.initialized:not(.mobile) {
     left: 20px;
 }
@@ -1568,23 +1582,41 @@ justify-content: center !important;
 .thumbnailSeeking {
    position: absolute;
    z-index: 99;
-   bottom: 60px;
+   bottom: calc(20px + var(--seekbar-bottom, 2.5rem));
    border-color: var(--primary-color);
    border-radius: 3px;
    border-style: solid;
-   border-width: 2px 2px 20px 2px;
+   border-width: 2px 2px 20px 2px; /* bottom border creates the white bar under the frame */
    display: none;
    opacity: 0;
    cursor: pointer;
 }
 
+.seekbarPin {
+    display: none;
+    position: fixed; /* fixed so rect.left + x maps directly to viewport coords */
+    width: 2px;
+    height: 4px;
+    background-color: var(--accent-color);
+    border-radius: 1px;
+    pointer-events: none;
+    z-index: 100;
+    /* JS sets left, top, and transform on every mousemove */
+}
+
 .thumbnailSeeking.noThumbnail {
    border-color: transparent;
-   padding: 2px 2px 2px 2px;
-   background-color: #F5F5F5;
+   border-width: 0;
+   padding: 0;
+   background: none;
    position: absolute;
-   left: 50%;
-   transform: translateX(-50%); /* Center horizontally */
+   /* JS sets left + transform on every mousemove — do not set them here */
+   white-space: nowrap;
+}
+
+/* Hide chapter text inside the timestamp pill — it has no context without a thumbnail frame */
+.thumbnailSeeking.noThumbnail .thumbnailChapterDisplay {
+    display: none;
 }
 
 .thumbnailSeeking.chapters.noThumbnail {
@@ -1613,42 +1645,41 @@ justify-content: center !important;
     padding: 4px;
 }
 
-.thumbnailSeeking.lg.noThumbnail.show,
-.thumbnailSeeking.md.noThumbnail.show,
-.thumbnailSeeking.sm.noThumbnail.show {
-    padding: 2px;
-    border-width: 4px;
+.thumbnailSeeking.lg.noThumbnail.show .thumbnailTimeDisplay,
+.thumbnailSeeking.md.noThumbnail.show .thumbnailTimeDisplay,
+.thumbnailSeeking.sm.noThumbnail.show .thumbnailTimeDisplay {
+    padding: 5px 10px;
 }
 
 
 .thumbnailSeeking.show.lg,
 .thumbnailSeeking.md.show {
-    bottom: 70px;
+    bottom: calc(30px + var(--seekbar-bottom, 2.5rem));
 }
 
 .thumbnailSeeking.show.lg.chapters {
-    bottom: 100px;
+    bottom: calc(60px + var(--seekbar-bottom, 2.5rem));
 }
 
 .thumbnailSeeking.show.lg.chapters.noThumbnail {
-    bottom: 100px;
+    bottom: calc(60px + var(--seekbar-bottom, 2.5rem));
 }
 
 .thumbnailSeeking.show.sm.chapters.noThumbnail {
-    bottom: 45px;
+    bottom: calc(5px + var(--seekbar-bottom, 2.5rem));
 }
 
 .thumbnailSeeking.show.md.chapters.noThumbnail {
-    bottom: 60px;
+    bottom: calc(20px + var(--seekbar-bottom, 2.5rem));
 }
 
 .thumbnailSeeking.sm.show {
-    bottom: 50px;
+    bottom: calc(10px + var(--seekbar-bottom, 2.5rem));
 }
 
 .thumbnailSeeking.chapters {
    border-width: 2px 2px 20px 2px;
-   bottom: 100px;
+   bottom: calc(60px + var(--seekbar-bottom, 2.5rem));
 }
 
 .thumbnailTimeDisplay {
@@ -1663,13 +1694,20 @@ justify-content: center !important;
    z-index: 9;
 }
 
-/* Additional styles for noThumbnail state */
+/* noThumbnail / spritesheet-fail state — pill is the timestamp’s background */
 .thumbnailSeeking.noThumbnail .thumbnailTimeDisplay {
    position: static;
    width: auto;
-   left: 50%;
-   transform: translateX(0);
-   bottom: 10px; /* Reset bottom to default */
+   left: auto;
+   transform: none;
+   bottom: auto;
+   color: #fff;
+   font-size: 13px;
+   font-weight: 600;
+   text-align: center;
+   background-color: rgba(0, 0, 0, 0.55);
+   padding: 5px 10px;
+   border-radius: 4px;
 }
 
 .thumbnailChapterDisplay {
@@ -1731,11 +1769,11 @@ justify-content: center !important;
 }
 
 .thumbnailSeeking.chapters.sm.show {
-    bottom: 4rem;
+    bottom: calc(1.5rem + var(--seekbar-bottom, 2.5rem));
 }
 
 .thumbnailSeeking.chapters.md.show {
-    bottom: 6.3rem;
+    bottom: calc(3.8rem + var(--seekbar-bottom, 2.5rem));
 }
 
 .chapter-mark {

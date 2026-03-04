@@ -56,6 +56,7 @@ import {
 import {
   DrmSetup,
   getSRC,
+  isDurationAvailable,
   receiveAttributes,
   renderPlaylistPanel,
   setStreamUrl,
@@ -68,7 +69,13 @@ import {
   setPlaybackRate,
 } from "./utils/PlaybackRatesHandler";
 import { initializeAnalytics } from "./utils/IntegrateAnlytics";
-import { loadCastAPI, setupChromecast } from "./utils/CastHandler";
+import {
+  isChromecastConnected,
+  loadCastAPI,
+  setupChromecast,
+  syncVolumeWithChromecast,
+} from "./utils/CastHandler";
+import { ChromecastIcon } from "./icons/ChromecastIcon/index";
 
 import { PlaylistIcon } from "./icons/PlaylistIcon/index";
 import {
@@ -359,6 +366,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
     this.castButton = documentObject.createElement("button");
     this.castButton.className = "castButton";
+    this.castButton.innerHTML = ChromecastIcon;
+    this.castButton.style.setProperty("--cast-button-display", "none");
 
     subtileButtonClickHandler(this);
 
@@ -616,6 +625,22 @@ class FastPixPlayer extends windowObject.HTMLElement {
     return this.video ? this.video.muted : false;
   }
 
+  set muted(value: boolean) {
+    if (!this.video) return;
+    const v = !!value;
+    this.video.muted = v;
+    if (v) {
+      this.setAttribute("muted", "");
+      this.mutedAttribute = true;
+    } else {
+      this.removeAttribute("muted");
+      this.mutedAttribute = false;
+    }
+    if (isChromecastConnected()) {
+      syncVolumeWithChromecast(this.video.volume, v);
+    }
+  }
+
   get seeking() {
     return this.video ? this.video.seeking : false;
   }
@@ -670,9 +695,92 @@ class FastPixPlayer extends windowObject.HTMLElement {
     return this.video ? autoPlay : false;
   }
 
+  set autoplay(value: boolean) {
+    const v = !!value;
+    if (v) {
+      this.setAttribute("auto-play", "");
+      this.hasAutoPlayAttribute = true;
+    } else {
+      this.removeAttribute("auto-play");
+      this.hasAutoPlayAttribute = false;
+    }
+    if (this.video) this.video.autoplay = v;
+  }
+
   get loop() {
     const loop = this.hasAttribute("loop");
     return this.video ? loop : false;
+  }
+
+  set loop(value: boolean) {
+    const v = !!value;
+    if (v) {
+      this.setAttribute("loop", "");
+      this.loopAttribute = true;
+      this.loopEnabled = true;
+    } else {
+      this.removeAttribute("loop");
+      this.loopAttribute = false;
+      this.loopEnabled = false;
+    }
+    if (this.video) this.video.loop = v;
+  }
+
+  play() {
+    return this.video?.play?.() ?? Promise.reject(new Error("Video not ready"));
+  }
+
+  pause() {
+    this.video?.pause?.();
+  }
+
+  mute() {
+    if (!this.video) return;
+    this.setAttribute("muted", "");
+    this.mutedAttribute = true;
+    this.video.muted = true;
+    if (isChromecastConnected()) {
+      syncVolumeWithChromecast(this.video.volume, true);
+    }
+  }
+
+  unmute() {
+    if (!this.video) return;
+    this.removeAttribute("muted");
+    this.mutedAttribute = false;
+    this.video.muted = false;
+    this.video.volume = 1;
+    if (isChromecastConnected()) {
+      syncVolumeWithChromecast(1, false);
+    }
+  }
+
+  enableAutoplay() {
+    this.setAttribute("auto-play", "");
+    this.hasAutoPlayAttribute = true;
+    if (this.video) this.video.autoplay = true;
+  }
+
+  disableAutoplay() {
+    this.removeAttribute("auto-play");
+    this.hasAutoPlayAttribute = false;
+    if (this.video) this.video.autoplay = false;
+  }
+
+  enableLoop() {
+    if (!this.video) return;
+    this.setAttribute("loop", "");
+    this.loopAttribute = true;
+    this.loopEnabled = true;
+    this.video.loop = true;
+  }
+
+  disableLoop() {
+    if (!this.video) return;
+    this.removeAttribute("loop");
+    this.loopAttribute = false;
+    this.loopEnabled = false;
+    this.video.loop = false;
   }
 
   addChapters(chapters: any[]) {
@@ -1117,8 +1225,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.video.addEventListener(
       "canplay",
       () => {
-        // Hide loader when video is ready to play
-        hideLoader(this);
+        if (isDurationAvailable(this)) hideLoader(this);
         // Bring controls back when ready
         if (this.controlsContainer) {
           this.controlsContainer.style.setProperty("--controls", "flex");
@@ -1362,6 +1469,17 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
     receiveAttributes(this);
 
+    if (
+      this.hasAttribute("auto-play") ||
+      this.hasAttribute("autoplay-shorts") ||
+      this.hasAttribute("loop-next")
+    ) {
+      this.controlsContainer?.style.setProperty(
+        "--initial-play-button",
+        "none"
+      );
+    }
+
     // style
     this.customStyle = documentObject.createElement("style");
     this.customStyle.innerHTML = skeleton;
@@ -1380,6 +1498,13 @@ class FastPixPlayer extends windowObject.HTMLElement {
         // Avoid flashing error screen while waiting for playlist-driven first load
         this.suppressErrorUntilReady = true;
         return;
+      }
+      if (
+        this.hasAttribute("auto-play") ||
+        this.hasAttribute("autoplay-shorts") ||
+        this.hasAttribute("loop-next")
+      ) {
+        showLoader(this);
       }
       let playbackUrlFinal: string | null = null; // Ensuring proper type
       if (
@@ -1708,11 +1833,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     // data
     initializeAnalytics(this, this.video, this.hls, Hls);
 
-    if (this.loopAttribute === "true") {
-      this.video.loop = true;
-    } else {
-      this.video.loop = false;
-    }
+    this.video.loop = !!this.loopAttribute;
 
     this.bufferedRange = documentObject.createElement("div");
     this.bufferedRange.style.position = "absolute";
@@ -1954,6 +2075,15 @@ class FastPixPlayer extends windowObject.HTMLElement {
    */
   public getPlayerButtonsSlot(): HTMLDivElement | null {
     return this.playerButtonsSlot ?? null;
+  }
+
+  /**
+   * Returns the video overlay div (covers the video, pointer-events: none by default).
+   * Use this to inject custom UI (e.g. play/pause) on top of the video. Set
+   * pointer-events: auto on injected elements so they receive clicks.
+   */
+  public getVideoOverlay(): HTMLDivElement | null {
+    return this.videoOverLay ?? null;
   }
 
   public setNextHandler(handler: (ctx: any) => void) {

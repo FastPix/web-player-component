@@ -22,6 +22,12 @@ function attachProgressBarListeners(
     showThumbnail(event.clientX);
     updateChapterMarkers(context);
   });
+  context.progressBar.addEventListener("mousedown", (event: MouseEvent) => {
+    showThumbnail(event.clientX);
+  });
+  context.progressBar.addEventListener("click", (event: MouseEvent) => {
+    showThumbnail(event.clientX);
+  });
   context.progressBar.addEventListener("mouseleave", () => {
     seekbarPin.style.display = "none";
     context.thumbnail.classList.remove("show");
@@ -37,8 +43,7 @@ function attachProgressBarListeners(
   ); // Marking as passive);
 
   context.progressBar.addEventListener("touchend", () => {
-    context.thumbnail.classList.remove("show");
-    seekbarPin.style.display = "none";
+    hideThumbnail(context);
   });
 }
 
@@ -156,19 +161,34 @@ function updateThumbnailPosition(
   context: any,
   x: number,
   newTileWidth: number,
-  finalBoundary: number,
-  isThumbnailPresent: boolean
+  barWidth: number,
+  margin: number,
+  isThumbnailPresent: boolean,
+  containerRect: DOMRect
 ): void {
-  if (x <= newTileWidth / 2 + 20) {
-    context.thumbnail.style.left = isThumbnailPresent ? "20px" : "40px";
-    context.thumbnail.style.right = "auto";
-  } else if (x >= finalBoundary - 20) {
-    context.thumbnail.style.left = "auto";
-    context.thumbnail.style.right = isThumbnailPresent ? "20px" : "0px";
+  const pillWidth = isThumbnailPresent
+    ? newTileWidth
+    : context.thumbnail.offsetWidth || 48;
+  const leftClamp = margin + pillWidth / 2;
+  const rightClamp = margin + barWidth - pillWidth / 2;
+  const centerX = margin + x;
+
+  let leftPx: number;
+  if (centerX <= leftClamp) {
+    leftPx = margin;
+  } else if (centerX >= rightClamp) {
+    leftPx = margin + barWidth - pillWidth;
   } else {
-    context.thumbnail.style.left = `${x - newTileWidth / 2 + 20}px`;
-    context.thumbnail.style.right = "auto";
+    leftPx = centerX - pillWidth / 2;
   }
+
+  const parent = context.thumbnail.offsetParent as HTMLElement | null;
+  const offset = parent
+    ? containerRect.left - parent.getBoundingClientRect().left
+    : 0;
+  context.thumbnail.style.left = `${leftPx + offset}px`;
+  context.thumbnail.style.right = "auto";
+  context.thumbnail.style.transform = "translateX(0)";
 }
 
 function updateArrowPosition(
@@ -226,7 +246,12 @@ function createThumbnailHandler(
       return;
     }
 
-    if (context.video.seeking || context.video.readyState < 3) {
+    // Only override to playback time when we have thumbnail frames (avoids wrong frame).
+    // For noThumbnail (spritesheet fail) always show cursor time so only the hover timestamp appears.
+    if (
+      thumbnailUrl &&
+      (context.video.seeking || context.video.readyState < 3)
+    ) {
       currentTime = context.video.currentTime;
     }
 
@@ -268,21 +293,22 @@ function showThumbnail(
 ): void {
   const { width: newTileWidth } = dimensions;
   const rect = context.progressBar.getBoundingClientRect();
-  const finalBoundary = rect.width - newTileWidth / 2 - 20;
+  const containerRect = context.controlsContainer.getBoundingClientRect();
+  const barWidth = rect.width;
+  const margin = rect.left - containerRect.left;
+  const finalBoundary = barWidth - newTileWidth / 2 - margin;
 
   context.thumbnail.classList.add("show");
-  const seekbarPin = context.controlsContainer.querySelector(".seekbarPin");
-  if (seekbarPin) {
-    seekbarPin.style.display = "block";
-  }
 
   updateTimeDisplay(context, currentTime);
   updateThumbnailPosition(
     context,
     x,
     newTileWidth,
-    finalBoundary,
-    !!thumbnailUrl
+    barWidth,
+    margin,
+    !!thumbnailUrl,
+    containerRect
   );
   updateArrowPosition(context, x, newTileWidth, finalBoundary);
   updateThumbnailBackground(
@@ -292,6 +318,15 @@ function showThumbnail(
     thumbnailUrl,
     dimensions
   );
+
+  const seekbarPin = context.controlsContainer.querySelector(".seekbarPin");
+  if (seekbarPin) {
+    seekbarPin.style.display = "block";
+    seekbarPin.style.position = "fixed";
+    seekbarPin.style.left = `${rect.left + x}px`;
+    seekbarPin.style.top = `${rect.top + rect.height / 2}px`;
+    seekbarPin.style.transform = "translate(-50%, -50%)";
+  }
 }
 
 function updateTimeDisplay(context: any, currentTime: number): void {
@@ -351,22 +386,14 @@ async function thumbnailSeeking(
   playbackId: string | null,
   spritesheetSrc: string
 ): Promise<void> {
-  // Check cache in sessionStorage first
-  const cacheKey = `spritesheetUrl-${playbackId}`;
+  // Cache key includes spritesheetSrc so changing spritesheet-src in the page uses the new URL
+  const cacheKey = `spritesheetUrl-${playbackId}-${spritesheetSrc}`;
   let cachedUrl = sessionStorage.getItem(cacheKey);
   let thumbnailJson;
 
   if (cachedUrl) {
-    // Use cached URL
-    let cachedSrc = { url: cachedUrl };
-    // Fetch fresh
-    thumbnailJson = await fetchThumbnailJson(
-      context,
-      playbackId,
-      cachedSrc.url
-    );
+    thumbnailJson = await fetchThumbnailJson(context, playbackId, cachedUrl);
   } else {
-    // Fetch fresh
     thumbnailJson = await fetchThumbnailJson(
       context,
       playbackId,
@@ -381,6 +408,9 @@ async function thumbnailSeeking(
 
   if (thumbnailUrl === null) {
     context.thumbnail.classList.add("noThumbnail");
+    if (context.progressBar) {
+      context.progressBar.setAttribute("title", "");
+    }
   } else {
     context.thumbnail.classList.remove("noThumbnail");
   }
@@ -412,10 +442,24 @@ async function thumbnailSeeking(
       );
     };
     spritesheetImage.onerror = () => {
-      console.warn("Failed to load spritesheet image");
+      console.debug(
+        "[thumbnailSeeking] Spritesheet image failed; using timestamp-only preview on hover."
+      );
+      context.thumbnail.classList.add("noThumbnail");
+      context.thumbnail.style.width = "";
+      context.thumbnail.style.height = "";
+      if (context.progressBar) {
+        context.progressBar.setAttribute("title", "");
+      }
+      const fallbackHandler = createThumbnailHandler(
+        context,
+        thumbnailJson,
+        dimensions,
+        null
+      );
       attachProgressBarListeners(
         context,
-        showThumbnailHandler,
+        fallbackHandler,
         context.controlsContainer.querySelector(".seekbarPin")
       );
     };

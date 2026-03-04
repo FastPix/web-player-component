@@ -131,10 +131,11 @@ function hidebackDropColor(context: any) {
 }
 
 function showLoader(context: any) {
+  if (context.loader?.style.display === "block") return;
   context.loader.style.display = "block";
 
-  if (context.video.offsetWidth <= 471) {
-    context.playPauseButton.classList.remove("showPlayButton");
+  if (context.video?.offsetWidth <= 471) {
+    context.playPauseButton?.classList.remove("showPlayButton");
   }
 }
 

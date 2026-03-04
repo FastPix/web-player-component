@@ -1,14 +1,24 @@
 {
   "name": "@fastpix/fp-player",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "FastPix Player SDK is a customizable video player for on-demand and live streaming.",
-  "main": "./dist/player.js",
+  "type": "module",
+  "main": "./dist/player.cdn.js",
+  "module": "./dist/player.js",
+  "exports": {
+    ".": {
+      "import": "./dist/player.js",
+      "require": "./dist/player.cdn.js"
+    }
+  },
   "files": [
     "dist/*"
   ],
   "scripts": {
     "format": "prettier --write \"src/**/*.ts\"",
-    "build": "npm run format && esbuild src/player.ts --target=es2019 --bundle --minify --outfile=./dist/player.js",
+    "build:esm": "esbuild src/player.ts --format=esm --target=es2019 --outdir=dist --minify",
+    "build:cdn": "esbuild src/player.ts --bundle --minify --format=iife --global-name=FastPixPlayer --target=es2019 --outfile=dist/player.cdn.js",
+    "build": "npm run format && npm run build:esm && npm run build:cdn",
     "format:css": "prettier --write \"src/utils/innerHtml.ts\""
   },
   "keywords": [
@@ -22,7 +32,6 @@
     "DRM Player",
     "Chapters",
     "VOD Player",
-    "Live Streaming Player",
     "Video Playback SDK",
     "Low-Latency Streaming",
     "M3U8 Player"
@@ -31,11 +40,10 @@
   "license": "MIT",
   "dependencies": {
     "@fastpix/video-data-core": "^1.0.5",
-    "hls.js": "^1.6.13",
-    "test-live-package": "^1.0.8"
+    "hls.js": "^1.6.13"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.27.3",
     "prettier": "^3.3.3"
   }
 }

@@ -12,18 +12,25 @@ import { documentObject } from "./CustomElements.js";
 import { isChromecastConnected } from "./CastHandler.js";
 
 const configHls: Partial<Hls.HlsConfig> = {
-  maxMaxBufferLength: 120, // Extend max buffer length for high-quality streams
+  maxMaxBufferLength: 120,
   autoStartLoad: true,
   debug: false,
   enableWorker: false,
-  startLevel: 0, // Start at a middle-level quality (adjust as appropriate)
+  startLevel: -1, // ABR picks initial level → fast start, then upgrades as network allows
   backBufferLength: 90,
   emeEnabled: true,
   lowLatencyMode: true,
-  capLevelToPlayerSize: true, // Automatically adjusts level to player size
-  abrEwmaFastLive: 2.0, // Tune ABR responsiveness for live content
+  capLevelToPlayerSize: true,
+
+  // ABR: fast start + upgrade when network improves
+  abrMaxWithRealBitrate: true,
+  abrEwmaFastLive: 2.0,
   abrEwmaSlowLive: 8.0,
-  abrMaxWithRealBitrate: true, // Use real bitrate for level switching
+  abrEwmaFastVoD: 3.0, // VOD: react quickly to bandwidth changes
+  abrEwmaSlowVoD: 9.0, // VOD: smooth estimate, still allows upgrade when network improves
+  abrBandWidthUpFactor: 0.85, // Use 85% of estimated bandwidth for upgrade → switch up sooner when headroom exists
+  abrBandWidthFactor: 0.8, // Slightly conservative on initial pick for stability
+
   drmSystems: {
     "com.widevine.alpha": {
       robustness: "SW_SECURE_CRYPTO",
@@ -417,6 +424,22 @@ function handleLiveStreamErrors(context: any, data: any) {
   }
 }
 
+/**
+ * For Shorts: choose startLevel from network when possible.
+ * -1 = let ABR pick (better initial quality on good network).
+ * 0 = start at lowest level (fastest time-to-first-frame on slow network).
+ */
+function getStartLevelForShorts(): number {
+  const conn = (navigator as any).connection;
+  if (!conn) return 0; // no API: prefer fastest start
+  if (conn.saveData === true) return 0; // user asked for less data
+  const effectiveType = (conn.effectiveType || "").toLowerCase();
+  const downlink = typeof conn.downlink === "number" ? conn.downlink : 10;
+  if (effectiveType === "slow-2g" || effectiveType === "2g") return 0;
+  if (effectiveType === "3g" && downlink < 1) return 0;
+  return -1; // 4g or decent 3g: let ABR choose
+}
+
 function initializeHLS(
   context: any,
   src: string | null,
@@ -429,20 +452,28 @@ function initializeHLS(
   if (Hls.isSupported()) {
     if (src && typeof src === "string") {
       context.hls.attachMedia(context.video);
+      context.video.loop = !!context.loopAttribute;
+      if (context.hasAttribute("autoplay-shorts")) {
+        context.hls.startLevel = getStartLevelForShorts();
+      }
       context.hls.loadSource(url);
     } else {
       console.warn("Stream URL is invalid or null:", src);
     }
 
-    // Hide loading indicator when the fragment has been loaded
+    // Hide loading indicator when the fragment has been loaded (only when not auto-play; with auto-play we hide on ready state in VideoListeners)
+    const autoplayAttrs =
+      context.hasAttribute("auto-play") ||
+      context.hasAttribute("autoplay-shorts") ||
+      context.hasAttribute("loop-next");
     context.hls.on(Hls.Events.FRAG_LOADED, () => {
-      hideLoader(context); // Hide loader UI
+      if (!autoplayAttrs) hideLoader(context);
     });
 
     setupErrorHandling(context, streamType);
 
     context.hls.on(Hls.Events.FRAG_BUFFERED, () => {
-      hideLoader(context);
+      if (!autoplayAttrs) hideLoader(context);
     });
   } else if (context.video.canPlayType("application/vnd.apple.mpegurl")) {
     // Safari or other native HLS-supporting browsers
@@ -456,6 +487,7 @@ function initializeHLS(
 
     context._src = url;
     context.video.src = url;
+    context.video.loop = !!context.loopAttribute;
   } else {
     // Handle case where HLS is not supported in the browser
     showError(
@@ -507,10 +539,15 @@ function handleHlsQualityAndTrackSetup(context: any) {
         renditionOrderAttr === "desc"
           ? [...levelsRetrieved].reverse()
           : levelsRetrieved;
+
+      // Do not override startLevel: let ABR choose so playback starts as soon as possible.
+      // When network improves, hls.js (nextLevel = -1) will switch to higher quality automatically.
       setupResolutionUI(context, levels);
       setupAudioTracks(context, audioTracks);
       setupSubtitleButton(context, subtitleTracks);
       setupResolutionMenuButton(context);
+      // Auto is always highlighted by default.
+      // Only a manual user click on a rendition button changes the highlight.
     }
   );
 
@@ -537,7 +574,7 @@ function setupResolutionUI(context: any, levels: any) {
   context.autoResolutionButton = createResolutionButton("Auto", () => {
     showLoader(context);
     context.hls.nextLevel = -1; // Enable automatic level selection
-    context.userSelectedLevel = null; // No specific level selected
+    context.userSelectedLevel = null;
     setActiveButton(context.autoResolutionButton, [
       ...context.resolutionButtons,
       context.autoResolutionButton,
@@ -547,9 +584,18 @@ function setupResolutionUI(context: any, levels: any) {
 
   context.resolutionMenu.appendChild(context.autoResolutionButton);
   context.resolutionButtons = levels.map(
-    (level: { height: any }, index: any) => {
-      const resolutionButton = createResolutionButton(`${level.height}p`, () =>
-        handleResolutionSwitch(context, index, level.height)
+    (level: { height: any; width: any }, index: any) => {
+      // For vertical video (height > width) use height for the label,
+      // otherwise use width (e.g., landscape or square).
+      const dimension =
+        typeof level.height === "number" &&
+        typeof level.width === "number" &&
+        level.height > level.width
+          ? level.width
+          : level.height;
+
+      const resolutionButton = createResolutionButton(`${dimension}p`, () =>
+        handleResolutionSwitch(context, index, dimension)
       );
       context.resolutionMenu.appendChild(resolutionButton);
       return resolutionButton;
