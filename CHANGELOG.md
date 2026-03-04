@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.12]
+
+### Changed
+
+- **Build & package** – ESM build is now a single bundled file (`dist/player.esm.js`), so `import '@fastpix/fp-player'` works in React, Vite, and other bundlers without "Could not resolve ./utils/..." errors. CDN build stays at `dist/player.js` for backward compatibility with existing script-tag and CDN URLs.
+- **Exports** – `"import"` resolves to `player.esm.js`; `"require"` and `main` resolve to `player.js` (IIFE).
+- **Build size** – Stripped legal comments and debugger statements in both builds for slightly smaller output.
+
+
 ## [1.0.11]
 
 ### Features you can use
