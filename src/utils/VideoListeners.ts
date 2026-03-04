@@ -37,6 +37,7 @@ import {
 } from "./CastHandler";
 import { hideError } from "./ErrorElement";
 import { cleanupOverlayAndControls } from "./ShoppableVideo";
+import { isDurationAvailable } from "./index";
 
 // connectedCallback
 const videoListeners = (context: any) => {
@@ -165,9 +166,6 @@ const videoListeners = (context: any) => {
         context.hasAttribute("autoplay-shorts") ||
         context.hasAttribute("auto-play") ||
         context.hasAttribute("loop-next");
-      const controlsDisplay = window.getComputedStyle(
-        context.controlsContainer
-      ).display;
 
       if (autoplayEnabled) {
         // Ensure video is not muted for auto-play
@@ -179,10 +177,7 @@ const videoListeners = (context: any) => {
           "--initial-play-button",
           "none"
         );
-
-        if (controlsDisplay === "none") {
-          showLoader(context);
-        }
+        // Loader already shown once in player setupStream for smooth single show
       }
     });
 
@@ -201,14 +196,19 @@ const videoListeners = (context: any) => {
       if (context.isError) {
         hideError(context);
       }
-      if (!context.video.paused && context.video.readyState >= 2) {
+      if (isDurationAvailable(context)) {
         hideLoader(context);
       }
-      if (!context.isBuffering) {
+      if (
+        !context.video.paused &&
+        context.video.readyState >= 2 &&
+        isDurationAvailable(context)
+      ) {
         hideLoader(context);
       }
-
-      hideLoader(context);
+      if (!context.isBuffering && isDurationAvailable(context)) {
+        hideLoader(context);
+      }
 
       cleanupOverlayAndControls(context);
 
@@ -226,17 +226,33 @@ const videoListeners = (context: any) => {
     context.video.addEventListener("canplay", () => {
       context.isBuffering = false;
       context.isLoading = false;
-      setTimeout(() => {
-        hideLoader(context);
-      }, 10);
+      const autoplay =
+        context.hasAttribute("auto-play") ||
+        context.hasAttribute("autoplay-shorts") ||
+        context.hasAttribute("loop-next");
+      if (!autoplay && isDurationAvailable(context)) {
+        setTimeout(() => hideLoader(context), 10);
+      }
     });
 
     context.video.addEventListener("canplaythrough", () => {
       context.isBuffering = false;
       context.isLoading = false;
-      setTimeout(() => {
-        hideLoader(context);
-      }, 10);
+      const autoplay =
+        context.hasAttribute("auto-play") ||
+        context.hasAttribute("autoplay-shorts") ||
+        context.hasAttribute("loop-next");
+      if (!autoplay && isDurationAvailable(context)) {
+        setTimeout(() => hideLoader(context), 10);
+      }
+    });
+
+    context.video.addEventListener("durationchange", () => {
+      const autoplay =
+        context.hasAttribute("auto-play") ||
+        context.hasAttribute("autoplay-shorts") ||
+        context.hasAttribute("loop-next");
+      if (!autoplay && isDurationAvailable(context)) hideLoader(context);
     });
 
     context.video.addEventListener("loadedmetadata", () => {
@@ -303,20 +319,78 @@ const videoListeners = (context: any) => {
       }
     });
 
+    // ── RAF-based progress bar paint (60 fps, silky smooth) ──────────────
+    // Only the visual bar fill runs on every frame.
+    // timeupdate still owns slower-changing UI: time display, chapters,
+    // skip-intro / next-episode buttons.
+    const getTrackUnfilledColor = () =>
+      getComputedStyle(context)
+        .getPropertyValue("--progress-bar-track-unfilled")
+        .trim() || "rgba(255,255,255,0.14)";
+
+    function paintProgressBar() {
+      const vid = context.video;
+      const duration = vid.duration;
+      if (!duration || !isFinite(duration)) return;
+
+      const currentTime = getCurrentTime(context);
+      const bufferEnd =
+        vid.buffered.length > 0 ? vid.buffered.end(vid.buffered.length - 1) : 0;
+      const seekedPct = Math.min((currentTime / duration) * 100, 100);
+      const bufferedPct = Math.min((bufferEnd / duration) * 100, 100);
+      const trackUnfilled = getTrackUnfilledColor();
+
+      context.progressBar.style.background =
+        `linear-gradient(to right, ` +
+        `${context.accentColor} 0%, ${context.accentColor} ${seekedPct}%, ` +
+        `${context.primaryColor} ${seekedPct}%, ${context.primaryColor} ${bufferedPct}%, ` +
+        `${trackUnfilled} ${bufferedPct}%, ${trackUnfilled} 100%)`;
+
+      context.progressBar.value = seekedPct;
+      context.progressBar.style.setProperty(
+        "--progressBar-thumb-position",
+        `${seekedPct}%`
+      );
+    }
+
+    let _rafId: number | null = null;
+
+    function startProgressRAF() {
+      if (_rafId !== null) return;
+      function loop() {
+        paintProgressBar();
+        _rafId = requestAnimationFrame(loop);
+      }
+      _rafId = requestAnimationFrame(loop);
+    }
+
+    function stopProgressRAF() {
+      if (_rafId !== null) {
+        cancelAnimationFrame(_rafId);
+        _rafId = null;
+      }
+      // Snap to the exact current position once more so the bar doesn't freeze mid-frame
+      paintProgressBar();
+    }
+
+    context.video.addEventListener("play", startProgressRAF);
+    context.video.addEventListener("playing", startProgressRAF);
+    context.video.addEventListener("pause", stopProgressRAF);
+    context.video.addEventListener("ended", stopProgressRAF);
+    context.video.addEventListener("seeking", paintProgressBar);
+    context.video.addEventListener("seeked", paintProgressBar);
+
+    // ── timeupdate — everything except the bar fill ───────────────────────
     context.video.addEventListener("timeupdate", () => {
-      if (!context.video.paused && context.video.readyState >= 2) {
+      if (
+        !context.video.paused &&
+        context.video.readyState >= 2 &&
+        isDurationAvailable(context)
+      ) {
         hideLoader(context);
       }
 
-      let currentTime = getCurrentTime(context);
-      const duration = context.video.duration;
-      const bufferEnd =
-        context.video.buffered.length > 0
-          ? context.video.buffered.end(context.video.buffered.length - 1)
-          : 0;
-      const bufferedPercentage = (bufferEnd / context.video.duration) * 100;
-      const seekedPercentage = Math.min((currentTime / duration) * 100, 100);
-      context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) 100%)`;
+      const currentTime = getCurrentTime(context);
 
       // Toggle Skip Intro button visibility within configured window
       if (
@@ -335,7 +409,6 @@ const videoListeners = (context: any) => {
           context.skipIntroButton.style.display = "none";
         }
       } else if (context.skipIntroButton) {
-        // Attributes missing: ensure button is hidden
         context.skipIntroButton.style.display = "none";
       }
 
@@ -354,58 +427,24 @@ const videoListeners = (context: any) => {
           context.nextEpisodeButton.style.display = "none";
         }
       } else if (context.nextEpisodeButton) {
-        // Attribute missing: ensure button is hidden
         context.nextEpisodeButton.style.display = "none";
       }
 
-      if (duration > 0) {
-        context.progressBar.value = seekedPercentage;
-        context.progressBar.style.setProperty(
-          "--progressBar-thumb-position",
-          `${seekedPercentage}%`
-        );
-      }
       updateTimeDisplay(context);
       activeChapter(context);
     });
 
-    context.video.addEventListener("seeked", () => {
-      let currentTime = getCurrentTime(context);
-      const duration = context.video.duration;
-      const bufferEnd =
-        context.video.buffered.length > 0
-          ? context.video.buffered.end(context.video.buffered.length - 1)
-          : 0;
-      const bufferedPercentage = (bufferEnd / duration) * 100;
-      const seekedPercentage = Math.min((currentTime / duration) * 100, 100);
+    // seeked bar paint is handled by the RAF seeked listener above
 
-      context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) 100%)`;
-
-      context.progressBar.style.setProperty(
-        "--progressBar-thumb-position",
-        `${seekedPercentage}%`
-      );
-    });
-
-    context.video.addEventListener("progress", () => {
-      let currentTime = getCurrentTime(context);
-      const bufferEnd =
-        context.video.buffered.length > 0
-          ? context.video.buffered.end(context.video.buffered.length - 1)
-          : 0;
-      const bufferedPercentage = (bufferEnd / context.video.duration) * 100;
-      const seekedPercentage = Math.min(
-        (currentTime / context.video.duration) * 100,
-        100
-      );
-      context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) 100%)`;
-      context.progressBar.style.setProperty(
-        "--progressBar-thumb-position",
-        `${seekedPercentage}%`
-      );
-    });
+    // "progress" fires when new data is buffered — repaint so the buffer
+    // indicator updates even when the video is paused.
+    context.video.addEventListener("progress", paintProgressBar);
 
     context.video.addEventListener("ended", () => {
+      if (context.hasAttribute("loop")) {
+        context.videoEnded = false;
+        return;
+      }
       context.videoEnded = true;
       context.liveStreamDisplay.addEventListener("click", () => {
         context.video.play();
@@ -491,7 +530,8 @@ const videoListeners = (context: any) => {
       seekedPercentage: number,
       bufferedPercentage: number
     ) {
-      context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) ${bufferedPercentage}%, rgba(255, 255, 255, 0.2) 100%)`;
+      const trackUnfilled = getTrackUnfilledColor();
+      context.progressBar.style.background = `linear-gradient(to right, ${context.accentColor} 0%, ${context.accentColor} ${seekedPercentage}%, ${context.primaryColor} ${seekedPercentage}%, ${context.primaryColor} ${bufferedPercentage}%, ${trackUnfilled} ${bufferedPercentage}%, ${trackUnfilled} 100%)`;
       context.progressBar.style.setProperty(
         "--progressBar-thumb-position",
         `${seekedPercentage}%`

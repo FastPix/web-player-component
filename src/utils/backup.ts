@@ -13,93 +13,32 @@ import { formatVideoDuration, isIOS } from "./index";
 import { getRemotePlaybackInstance } from "./ToggleController";
 
 const CAST_LOG_PREFIX = "[Cast]";
-const CAST_DIAGNOSE = false; // Set to true for low-level debugging
 
-// Global flag controlled by the player `debug` attribute.
-let castDebugEnabled = false;
-
-function setCastDebugFromContext(playerContext: any): void {
-  castDebugEnabled = !!playerContext?.debugAttribute;
-}
+/** Set to true to run step-by-step diagnosis: use default receiver, log STEP 1–4, and print next actions if media session never appears. Set false after diagnosis. */
+const CAST_DIAGNOSE = true;
 
 function castLog(message: string, data?: unknown): void {
-  if (!castDebugEnabled) return;
   if (data !== undefined) {
-    // eslint-disable-next-line no-console
     console.log(CAST_LOG_PREFIX, message, data);
   } else {
-    // eslint-disable-next-line no-console
     console.log(CAST_LOG_PREFIX, message);
   }
 }
 
 function castStep(step: number, message: string, data?: unknown): void {
-  if (!castDebugEnabled) return;
   const label = `--- STEP ${step} ---`;
   if (CAST_DIAGNOSE) {
-    if (data !== undefined) {
-      // eslint-disable-next-line no-console
-      console.log(CAST_LOG_PREFIX, label, message, data);
-    } else {
-      // eslint-disable-next-line no-console
-      console.log(CAST_LOG_PREFIX, label, message);
-    }
+    if (data !== undefined) console.log(CAST_LOG_PREFIX, label, message, data);
+    else console.log(CAST_LOG_PREFIX, label, message);
   } else {
     castLog(message, data);
   }
 }
 
-function castError(...args: any[]): void {
-  if (!castDebugEnabled) return;
-  // eslint-disable-next-line no-console
-  console.error(...args);
-}
-
-function castWarn(...args: any[]): void {
-  if (!castDebugEnabled) return;
-  // eslint-disable-next-line no-console
-  console.warn(...args);
-}
-
-// For APIs that expect an error callback function
-function castErrorFn(...args: any[]): void {
-  if (!castDebugEnabled) return;
-  // eslint-disable-next-line no-console
-  console.error(...args);
-}
-
-export interface CastDrmConfig {
-  widevineLicenseUrl?: string;
-  playReadyLicenseUrl?: string;
-  licenseRequestHeaders?: Record<string, string>;
-  licenseRequestData?: string;
-}
-
-/**
- * The shape of customData we send to the CAF receiver for DRM.
- * The custom receiver reads this in its setMediaPlaybackInfoHandler.
- *
- * IMPORTANT: chrome.cast.media.ContentProtection does NOT exist on the sender
- * SDK — DRM must be forwarded as plain JSON via mediaInfo.customData and
- * handled entirely on the receiver side via PlaybackConfig.
- */
-export interface CastCustomData {
-  drm?: {
-    widevine?: {
-      licenseUrl: string;
-      headers?: Record<string, string>;
-      licenseRequestData?: string;
-    };
-    playready?: {
-      licenseUrl: string;
-      headers?: Record<string, string>;
-    };
-  };
-}
-
 let castScriptAdded = false;
 
 function loadCastAPI(): void {
+  // If Cast is already available (e.g., injected by extension or loaded once), skip
   if ((window as any)?.cast?.framework) return;
   if ((window as any).__fastpixCastLoading) return;
   if (castScriptAdded) return;
@@ -125,7 +64,7 @@ function loadCastAPI(): void {
   };
   script.onerror = () => {
     (window as any).__fastpixCastLoading = false;
-    castError(CAST_LOG_PREFIX, "Cast sender script failed to load");
+    console.error(CAST_LOG_PREFIX, "Cast sender script failed to load");
   };
   document.head.appendChild(script);
   castLog("Loading Cast sender script...");
@@ -139,7 +78,6 @@ function setupChromecast(
   streamUrl: string,
   playerContext: any
 ): void {
-  setCastDebugFromContext(playerContext);
   if (isIOS(playerContext)) return;
   (window as any).__onGCastApiAvailable = () => {
     initializeCastIfAvailable(button, video, streamUrl, playerContext);
@@ -157,6 +95,7 @@ const isChromecastAvailable = () => {
     window as any
   )?.cast?.framework?.CastContext?.getInstance?.();
   if (!castContext) return false;
+
   const state = castContext.getCastState?.();
   return state === "AVAILABLE" || state === "CONNECTED";
 };
@@ -180,9 +119,10 @@ function initializeCastIfAvailable(
 }
 
 function handleChromecastError(): void {
-  castError("Google Cast API did NOT load.");
+  console.error("Google Cast API did NOT load.");
 }
 
+// Check if Chromecast is connected
 function isChromecastConnected(): boolean {
   const castContext = getCastContext();
   return !!castContext?.getCurrentSession();
@@ -193,7 +133,8 @@ function freezeVideoWhileUpdatingProgress(
   playerContext: any
 ) {
   function updateTime() {
-    if (!isChromecastConnected()) return;
+    if (!isChromecastConnected()) return; // Ensure Chromecast is active
+
     const session = (
       window as any
     ).cast.framework.CastContext.getInstance().getCurrentSession();
@@ -201,12 +142,14 @@ function freezeVideoWhileUpdatingProgress(
       const media = session.getMediaSession();
       if (media) {
         const castTime = media.getEstimatedTime();
+
+        // Update UI only, don't change video.currentTime
         playerContext.progressBar.value = (castTime / video.duration) * 100;
-        playerContext.textContent = formatVideoDuration(castTime);
+        playerContext.textContent = formatVideoDuration(castTime); // Use formatVideoDuration instead of formatTime
       }
     }
   }
-  setInterval(updateTime, 1000);
+  setInterval(updateTime, 1000); // Update progress every second
 }
 
 function syncSeekWithChromecast(playerContext: any) {
@@ -219,7 +162,7 @@ function syncSeekWithChromecast(playerContext: any) {
       media.seek(
         new (window as any).chrome.cast.media.SeekRequest(seekTime),
         () => {},
-        (error: any) => castError("Chromecast: Seek failed", error)
+        (error: any) => console.error("Chromecast sravani: Seek failed", error)
       );
     }
   }
@@ -230,14 +173,16 @@ function seekChromecastProgressbar(time: number): void {
     window as any
   ).cast.framework.CastContext.getInstance().getCurrentSession();
   if (!session) return;
+
   const media = session.getMediaSession();
   if (media) {
     const seekRequest = new (window as any).chrome.cast.media.SeekRequest();
     seekRequest.currentTime = time;
+
     media.seek(
       seekRequest,
       () => {},
-      (error: any) => castError("[Cast] Seek failed", error)
+      (error: any) => console.error("[Cast] Seek failed", error)
     );
   }
 }
@@ -278,7 +223,7 @@ function syncPlaybackWithChromecast(
           let lastLoggedState: string | null = null;
           updateInterval = window.setInterval(() => {
             const media = session?.getMediaSession();
-            if (!media) return;
+            if (!media) return; // Session exists but media not loaded yet (e.g. before loadMedia completes)
 
             const state = media.playerState;
             if (state !== lastLoggedState) {
@@ -311,6 +256,7 @@ function syncPlaybackWithChromecast(
               const endedEvent = new Event("ended");
               video.dispatchEvent(endedEvent);
               hasDispatchedEndedEvent = true;
+
               hideInitControls(playerContext);
               showLoader(playerContext);
               localStorage.setItem("chromecastFinished", "true");
@@ -356,6 +302,7 @@ function syncPlaybackWithChromecast(
           } else {
             video.play();
           }
+
           break;
         }
       }
@@ -366,22 +313,27 @@ function syncPlaybackWithChromecast(
 function disconnectIfCastFinished() {
   const castContext = getCastContext();
   const session = castContext.getCurrentSession();
+
   const chromecastFinished =
     localStorage.getItem("chromecastFinished") === "true";
   const chromecastActive = localStorage.getItem("chromecastActive") === "true";
+
   if (chromecastActive && chromecastFinished && session) {
-    session.endSession(true);
+    session.endSession(true); // Force disconnect
     localStorage.setItem("chromecastActive", "false");
-    localStorage.setItem("chromecastFinished", "false");
+    localStorage.setItem("chromecastFinished", "false"); // Reset
   }
 }
 
 function getStoredVolume(playerContext: any) {
   const storedVolume = localStorage.getItem("media-volume");
-  const mediaVolume = storedVolume !== null ? parseFloat(storedVolume) : 1;
-  const isMuted = mediaVolume === 0;
+  const mediaVolume = storedVolume !== null ? parseFloat(storedVolume) : 1; // Default volume = 1
+  const isMuted = mediaVolume === 0; // Determine if muted
+
+  // Update the player context
   playerContext.isMuted = isMuted;
-  return { isMuted, mediaVolume };
+
+  return { isMuted, mediaVolume }; // Return both values
 }
 
 function syncVolumeWithChromecast(volume: number, isMuted: boolean) {
@@ -397,6 +349,7 @@ function syncVolumeWithChromecast(volume: number, isMuted: boolean) {
 
   const trySetVolume = () => {
     if (!session) return;
+
     const media = session.getMediaSession();
     if (media !== null) {
       const volumeRequest = new chromeCast.media.VolumeRequest(
@@ -404,15 +357,18 @@ function syncVolumeWithChromecast(volume: number, isMuted: boolean) {
       );
       volumeRequest.volume.level = volume;
       volumeRequest.volume.muted = isMuted;
+
       media.setVolume(
         volumeRequest,
         () => {},
-        (error: any) => castError("❌ Chromecast: Volume update failed", error)
+        (error: any) =>
+          console.error("❌ Chromecast: Volume update failed", error)
       );
     } else if (attempts < maxRetries) {
       attempts++;
-      setTimeout(trySetVolume, 300);
+      setTimeout(trySetVolume, 300); // Retry after 300ms (media may not be loaded yet)
     }
+    // When media is still null after retries, skip silently (loadMedia may not have completed yet)
   };
 
   trySetVolume();
@@ -430,7 +386,7 @@ function onVolumeChangeDuringCasting(volume: number): void {
     session
       .setVolume(volume)
       .then(() => {})
-      .catch((error: any) => castError("Volume change error:", error));
+      .catch((error: any) => console.error("Volume change error:", error));
   }
 }
 
@@ -444,18 +400,18 @@ function initializeCastApi(
   const chromeCast = (window as any).chrome?.cast;
 
   if (!castContext || !chromeCast) {
-    castError("Chromecast API is not available.");
+    console.error("Chromecast API is not available.");
     return;
   }
 
   syncPlaybackWithChromecast(video, playerContext);
 
-  // ─── RECEIVER APP ID ──────────────────────────────────────────────────────
-  // Use your registered custom CAF receiver app ID when casting DRM content.
-  // The Default Media Receiver (CC1AD845) cannot handle DRM via customData.
-  // Register your custom receiver at: https://cast.google.com/publish
-  // and host the receiver HTML from cast-receiver.html in this repo.
-  const receiverAppId = playerContext.castReceiverAppId ?? "CC1AD845";
+  // Step 1: When diagnosing, use default receiver to see if the issue is the custom app (7E13138A).
+  const USE_DEFAULT_RECEIVER_FOR_TESTING = CAST_DIAGNOSE || false;
+  const defaultId =
+    (chromeCast as any).media?.DEFAULT_MEDIA_RECEIVER_APP_ID ??
+    (chromeCast as any).DEFAULT_MEDIA_RECEIVER_APP_ID;
+  const receiverAppId = "CC1AD845";
 
   castContext.setOptions({
     receiverApplicationId: receiverAppId,
@@ -464,8 +420,13 @@ function initializeCastApi(
     language: "en-US",
     resumeSavedSession: true,
   });
-
-  castStep(1, "Receiver", { receiverAppId });
+  castStep(1, "Receiver", {
+    receiverAppId,
+    usingDefault: USE_DEFAULT_RECEIVER_FOR_TESTING,
+    hint: USE_DEFAULT_RECEIVER_FOR_TESTING
+      ? "Using default receiver to test. If cast works, the issue is app 7E13138A."
+      : "Using your app 7E13138A. If cast fails, set CAST_DIAGNOSE=true and try again.",
+  });
 
   castContext.addEventListener(
     (window as any).cast.framework.CastContextEventType.CAST_STATE_CHANGED,
@@ -495,21 +456,16 @@ function updateCastButton(
   castState: string,
   playerContext: any
 ): void {
-  const castFramework = (window as any).cast?.framework;
-  const noDevices = castFramework?.CastState?.NO_DEVICES_AVAILABLE;
-  const notSupported = castFramework?.CastState?.NOT_SUPPORTED;
-  const showButton =
-    castState !== noDevices &&
-    castState !== notSupported &&
-    (castState === castFramework?.CastState?.CONNECTED ||
-      castState === castFramework?.CastState?.NOT_CONNECTED ||
-      castState === castFramework?.CastState?.CONNECTING);
-  playerContext?.castButton?.style?.setProperty(
+  const castFramework = (window as any).cast.framework;
+
+  // Update the CSS variable --cast-button-display based on castState
+  playerContext?.castButton.style.setProperty(
     "--cast-button-display",
-    showButton ? "flex" : "none"
+    castState === castFramework.CastState.NO_DEVICES_AVAILABLE ? "none" : "flex"
   );
+
   button.innerHTML =
-    castState === castFramework?.CastState?.CONNECTED
+    castState === castFramework.CastState.CONNECTED
       ? ChromecastActiveIcon
       : ChromecastIcon;
 }
@@ -538,7 +494,7 @@ function toggleCasting(
     castContext
       .requestSession()
       .catch((error: Error) =>
-        castError(CAST_LOG_PREFIX, "Error opening session menu", error)
+        console.error(CAST_LOG_PREFIX, "Error opening session menu", error)
       );
   } else {
     castLog("No session, requesting session then sending media");
@@ -552,7 +508,11 @@ function toggleCasting(
         if (msg === "cancel" || msg.includes("cancel"))
           castLog("Cast cancelled (no device selected)");
         else
-          castError(CAST_LOG_PREFIX, "Unable to start casting session", error);
+          console.error(
+            CAST_LOG_PREFIX,
+            "Unable to start casting session",
+            error
+          );
       });
   }
 }
@@ -562,123 +522,50 @@ function controlCastMedia(action: "play" | "pause", playerContext: any) {
     window as any
   ).cast.framework.CastContext.getInstance().getCurrentSession();
   if (!session) return;
+
   const media = session.getMediaSession();
   if (!media) return;
 
   if (action === "play") {
-    media.play(null, () => {}, castErrorFn);
+    media.play(null, () => {}, console.error);
     playerContext.playPauseButton.innerHTML = PauseIcon;
   } else {
-    media.pause(null, () => {}, castErrorFn);
+    media.pause(null, () => {}, console.error);
     playerContext.playPauseButton.innerHTML = PlayIcon;
   }
 }
 
 let lastPlaybackTime: number = 0;
 
+// Seek function for Chromecast
 function seekInChromecast(offset: number) {
   const castContext = getCastContext();
   const session = castContext.getCurrentSession();
+
   if (session) {
     const media = session.getMediaSession();
     if (media) {
       const currentTime = media.getEstimatedTime();
-      const seekTime = Math.max(0, currentTime + offset);
+      const seekTime = Math.max(0, currentTime + offset); // Ensure non-negative seek time
+
       const seekRequest = new (window as any).chrome.cast.media.SeekRequest();
       seekRequest.currentTime = seekTime;
+
       media.seek(
         seekRequest,
         () => {},
-        (error: any) => castError("Chromecast: Seek failed", error)
+        (error: any) => console.error("Chromecast: Seek failed", error)
       );
     }
   }
 }
 
 function fastForwardButtonClickHandler() {
-  seekInChromecast(10);
+  seekInChromecast(10); // Seek forward by 10 seconds in Chromecast
 }
 
 function rewindButtonClickHandler() {
-  seekInChromecast(-10);
-}
-
-// ─── AUTO-EXTRACT DRM CONFIG FROM HLS.JS ──────────────────────────────────────
-function extractDrmConfigFromHls(hls: any): CastDrmConfig | null {
-  try {
-    const drmSystems = hls?.config?.drmSystems;
-    if (!drmSystems) return null;
-
-    const widevine = drmSystems["com.widevine.alpha"];
-    const playready = drmSystems["com.microsoft.playready"];
-
-    if (!widevine && !playready) return null;
-
-    const config: CastDrmConfig = {};
-
-    if (widevine?.licenseUrl) {
-      config.widevineLicenseUrl = widevine.licenseUrl;
-      castLog("DRM: Auto-extracted Widevine license URL from hls.js", {
-        url: widevine.licenseUrl.substring(0, 80),
-      });
-    }
-
-    if (playready?.licenseUrl) {
-      config.playReadyLicenseUrl = playready.licenseUrl;
-      castLog("DRM: Auto-extracted PlayReady license URL from hls.js");
-    }
-
-    return config;
-  } catch (err) {
-    castWarn(CAST_LOG_PREFIX, "Failed to extract DRM config from hls.js", err);
-    return null;
-  }
-}
-
-/**
- * Builds the customData payload that the custom CAF receiver will consume
- * to configure PlaybackConfig with the correct licenseUrl + protectionSystem.
- *
- * NOTE: The Cast Sender SDK has NO `chrome.cast.media.ContentProtection`
- * constructor — that class lives only on the receiver (cast.framework.ContentProtection).
- * The correct sender-side pattern is to pass DRM info as plain JSON in
- * mediaInfo.customData and let the receiver apply it to PlaybackConfig.
- */
-function buildCastCustomData(drmConfig: CastDrmConfig): CastCustomData {
-  const customData: CastCustomData = {};
-
-  if (drmConfig.widevineLicenseUrl || drmConfig.playReadyLicenseUrl) {
-    customData.drm = {};
-
-    if (drmConfig.widevineLicenseUrl) {
-      customData.drm.widevine = {
-        licenseUrl: drmConfig.widevineLicenseUrl,
-      };
-      if (drmConfig.licenseRequestHeaders) {
-        customData.drm.widevine.headers = drmConfig.licenseRequestHeaders;
-      }
-      if (drmConfig.licenseRequestData) {
-        customData.drm.widevine.licenseRequestData =
-          drmConfig.licenseRequestData;
-      }
-      castLog("DRM: Widevine config added to customData", {
-        licenseUrl: drmConfig.widevineLicenseUrl.substring(0, 80),
-        hasHeaders: !!drmConfig.licenseRequestHeaders,
-      });
-    }
-
-    if (drmConfig.playReadyLicenseUrl) {
-      customData.drm.playready = {
-        licenseUrl: drmConfig.playReadyLicenseUrl,
-      };
-      if (drmConfig.licenseRequestHeaders) {
-        customData.drm.playready.headers = drmConfig.licenseRequestHeaders;
-      }
-      castLog("DRM: PlayReady config added to customData");
-    }
-  }
-
-  return customData;
+  seekInChromecast(-10); // Seek backward by 10 seconds in Chromecast
 }
 
 function sendMediaToChromecast(
@@ -690,10 +577,10 @@ function sendMediaToChromecast(
 ): void {
   const session = context.getCurrentSession();
   if (!session) {
-    castError(CAST_LOG_PREFIX, "No session available.");
+    console.error(CAST_LOG_PREFIX, "No session available.");
     return;
   }
-
+  // Prefer the URL HLS actually loaded (in case of redirects or signed manifest); then streamUrl / video src
   const hlsUrl =
     playerContext.hls && typeof (playerContext.hls as any).url === "string"
       ? (playerContext.hls as any).url
@@ -705,98 +592,55 @@ function sendMediaToChromecast(
         ? streamUrl
         : video.currentSrc || video.src
   ) as string;
-
   if (!initialUrl || initialUrl.trim() === "") {
-    castError(
+    console.error(
       CAST_LOG_PREFIX,
-      "No stream URL. Ensure the video has loaded and try casting again."
+      "No stream URL. Ensure the video has loaded (e.g. play once) and try casting again."
     );
     return;
   }
 
   lastPlaybackTime = video.currentTime;
-  const autoplay = true;
-  const url = initialUrl;
+  const autoplay = true; // Always start playback on TV to avoid stuck loading; user can pause from sender
 
+  // Send the master URL to Cast so the receiver fetches the manifest and gets its own signed variant/segment URLs.
+  const url = initialUrl;
   (function sendWithUrl() {
     castStep(2, "URL sent to Chromecast", {
       url: url.substring(0, 90) + (url.length > 90 ? "..." : ""),
       isMaster: url.toLowerCase().includes(".m3u8"),
+      hint: "Receiver will fetch this URL (no cookies). If curl this URL returns 200, URL is fine.",
     });
-
     castLog("sendMediaToChromecast", {
       url: url.substring(0, 80) + (url.length > 80 ? "..." : ""),
       currentTime: lastPlaybackTime,
       autoplay,
     });
-
     if (/^(https?:\/\/)?(localhost|127\.0\.0\.1|0\.0\.0\.0)/i.test(url)) {
-      castWarn(
+      console.warn(
         CAST_LOG_PREFIX,
-        "Stream URL is localhost — Chromecast cannot reach it."
+        "Stream URL is localhost/127.0.0.1. The Chromecast device cannot reach it; use a URL that is accessible on your network (e.g. same Wi‑Fi) or a public URL."
       );
     }
 
     const chromeCast = (window as any).chrome.cast;
-
+    // Match working example.html: content type, stream type, and HLS segment format so receiver can play (fMP4/.m4s).
     const mediaInfo = new chromeCast.media.MediaInfo(
       url,
-      "application/vnd.apple.mpegurl"
+      "application/x-mpegURL"
     );
-
     mediaInfo.streamType = chromeCast.media.StreamType.BUFFERED;
     mediaInfo.metadata = new chromeCast.media.GenericMediaMetadata();
+    // Tell receiver to expect fMP4 segments (FastPix and many HLS streams use .m4s). For TS segments use HlsSegmentFormat.TS.
     mediaInfo.hlsSegmentFormat = chromeCast.media.HlsSegmentFormat.FMP4;
     mediaInfo.hlsVideoSegmentFormat =
       chromeCast.media.HlsVideoSegmentFormat.FMP4;
-
-    // ─── DRM VIA customData (SENDER-SIDE) ────────────────────────────────────
-    //
-    // The Cast Sender SDK does NOT have chrome.cast.media.ContentProtection.
-    // That constructor exists only on the Web Receiver (cast.framework.ContentProtection).
-    //
-    // The correct approach:
-    //   SENDER  → puts DRM info as plain JSON into mediaInfo.customData
-    //   RECEIVER → reads customData in setMediaPlaybackInfoHandler and applies
-    //              it to PlaybackConfig (licenseUrl, protectionSystem, headers)
-    //
-    // Priority:
-    //   1. Explicit playerContext.drmConfig
-    //   2. Auto-extract from hls.js config
-    //   3. No DRM
-    let drmConfig: CastDrmConfig | undefined = playerContext.drmConfig;
-
-    if (!drmConfig && playerContext.hls) {
-      castLog(
-        "DRM: No explicit drmConfig — attempting auto-extract from hls.js"
-      );
-      drmConfig = extractDrmConfigFromHls(playerContext.hls) ?? undefined;
-    }
-
-    if (
-      drmConfig &&
-      (drmConfig.widevineLicenseUrl || drmConfig.playReadyLicenseUrl)
-    ) {
-      castLog(
-        "DRM: Encrypted stream detected — passing DRM config in customData"
-      );
-      const customData = buildCastCustomData(drmConfig);
-      mediaInfo.customData = customData;
-      castLog("DRM: customData attached to mediaInfo", {
-        hasWidevine: !!customData.drm?.widevine,
-        hasPlayReady: !!customData.drm?.playready,
-      });
-    } else {
-      castLog(
-        "DRM: No drmConfig found — casting as clear (unencrypted) stream"
-      );
-    }
-    // ────────────────────────────────────────────────────────────────────────
 
     const textTracks = Array.from(video.textTracks);
     const trackElements = Array.from(video.querySelectorAll("track"));
     const tracks: any[] = [];
 
+    // Prefer track elements if they exist
     if (trackElements.length > 0) {
       for (let i = 0; i < trackElements.length; i++) {
         const trackEl = trackElements[i];
@@ -804,25 +648,30 @@ function sendMediaToChromecast(
           i + 1,
           chromeCast.media.TrackType.TEXT
         );
+
         castTrack.trackContentId = trackEl.src || "";
         castTrack.trackContentType = "text/vtt";
         castTrack.name = trackEl.label || `Subtitle ${i + 1}`;
         castTrack.language = trackEl.srclang || "en";
         castTrack.subtype = chromeCast.media.TextTrackType.SUBTITLES;
+
         tracks.push(castTrack);
       }
     } else if (textTracks.length > 0) {
+      // Fallback: use textTracks metadata if no <track> elements are found
       for (let i = 0; i < textTracks.length; i++) {
         const textTrack = textTracks[i];
         const castTrack = new chromeCast.media.Track(
           i + 1,
           chromeCast.media.TrackType.TEXT
         );
-        castTrack.trackContentId = "";
+
+        castTrack.trackContentId = ""; // No src available
         castTrack.trackContentType = "text/vtt";
         castTrack.name = textTrack.label || `Subtitle ${i + 1}`;
         castTrack.language = textTrack.language || "en";
         castTrack.subtype = chromeCast.media.TextTrackType.SUBTITLES;
+
         tracks.push(castTrack);
       }
     }
@@ -833,23 +682,19 @@ function sendMediaToChromecast(
     }
 
     const request = new chromeCast.media.LoadRequest(mediaInfo);
+    // Start from 0 so TV doesn't get stuck (many receivers fail on initial seek with HLS)
     request.currentTime = 0;
     request.autoplay = autoplay;
-
     castLog("LoadRequest", {
       currentTime: request.currentTime,
       autoplay: request.autoplay,
       requestedSeekAfterLoad: lastPlaybackTime,
-      hasDrm: !!(
-        drmConfig?.widevineLicenseUrl || drmConfig?.playReadyLicenseUrl
-      ),
     });
 
     castStep(3, "Sending loadMedia request", {
       currentTime: 0,
       autoplay: true,
     });
-
     session
       .loadMedia(request)
       .then(() => {
@@ -864,6 +709,7 @@ function sendMediaToChromecast(
         video.pause();
         freezeVideoWhileUpdatingProgress(video, playerContext);
 
+        // --- Diagnose: log what the receiver reports (why TV might be stuck) ---
         const logMediaStatus = (media: any, label: string) => {
           if (!media) return;
           const status: Record<string, unknown> = {
@@ -873,25 +719,15 @@ function sendMediaToChromecast(
           if (media.idleReason != null) {
             status.idleReason = media.idleReason;
             status._hint =
-              "idleReason set = receiver had a problem (LOAD_FAILED / CORS / DRM license failure)";
+              "idleReason set = receiver had a problem (e.g. LOAD_FAILED, CORS, or unsupported stream)";
           }
           castLog(label, status);
         };
-
-        // FIX: Stop diagnostic polling once media session appears and is PLAYING
         let diagnosticTicks = 0;
-        let foundPlaying = false;
         const diagnosticInterval = window.setInterval(() => {
           const media = session.getMediaSession();
           if (media) {
             logMediaStatus(media, `TV status #${++diagnosticTicks}`);
-
-            if (media.playerState === "PLAYING") {
-              foundPlaying = true;
-              window.clearInterval(diagnosticInterval);
-              castLog("✅ Stream is PLAYING on Chromecast!");
-            }
-
             if (
               typeof media.addUpdateListener === "function" &&
               diagnosticTicks === 1
@@ -912,6 +748,7 @@ function sendMediaToChromecast(
           if (diagnosticTicks >= 10) window.clearInterval(diagnosticInterval);
         }, 2000);
 
+        // Media session may appear after a delay; retry play() with backoff
         const tryPlay = (attempt: number) => {
           const media = session.getMediaSession();
           if (media) {
@@ -937,18 +774,34 @@ function sendMediaToChromecast(
                   );
               },
               (err: unknown) =>
-                castWarn(CAST_LOG_PREFIX, "media.play() error", err)
+                console.warn(CAST_LOG_PREFIX, "media.play() error", err)
             );
           } else if (attempt < 6) {
             setTimeout(() => tryPlay(attempt + 1), 600);
           } else {
             castLog(
-              "Media session not available after retries — TV may be stuck or stream unreachable"
+              "Media session still not available after retries — TV may be stuck loading or stream unreachable"
             );
+            if (CAST_DIAGNOSE) {
+              console.warn(
+                CAST_LOG_PREFIX,
+                "--- STEP 4: Diagnosis (media session never appeared) ---"
+              );
+              console.warn(
+                CAST_LOG_PREFIX,
+                "Next: A) Default receiver + still fails = TV/network. B) Using 7E13138A? Set CAST_DIAGNOSE=true to try default. C) Master URL is public; issue likely receiver or TV cannot reach variant/segment domains."
+              );
+            } else {
+              console.warn(
+                CAST_LOG_PREFIX,
+                "Set CAST_DIAGNOSE=true in CastHandler.ts, rebuild, cast again for step-by-step diagnosis."
+              );
+            }
           }
         };
         tryPlay(0);
 
+        // Sync volume once media is loaded
         const { mediaVolume, isMuted } = getStoredVolume(playerContext);
         syncVolumeWithChromecast(mediaVolume, isMuted);
 
@@ -962,10 +815,10 @@ function sendMediaToChromecast(
         }
       })
       .catch((err: Error) => {
-        castStep(3, "loadMedia FAILED", {
+        castStep(3, "loadMedia FAILED (receiver rejected or network error)", {
           error: String(err?.message || err),
         });
-        castError(CAST_LOG_PREFIX, "Load media error", err);
+        console.error(CAST_LOG_PREFIX, "Load media error", err);
       });
   })();
 }

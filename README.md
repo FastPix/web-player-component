@@ -109,6 +109,27 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
 
   - The `cross-origin` attribute enables proper handling of cross-origin requests, allowing resources to be fetched securely across different origins and enhancing security when accessing media files.
 
+- ## Programmatic playback control:
+
+  - The player exposes JavaScript methods for controlling playback and volume from your code:
+
+  - **`play()`** – Starts or resumes playback. Returns a Promise that resolves when playback has started, or rejects if the video is not ready.
+  - **`pause()`** – Pauses playback.
+  - **`mute()`** – Mutes the video (sets the `muted` attribute and updates internal state; syncs with Chromecast when casting).
+  - **`unmute()`** – Unmutes the video (removes `muted`, sets volume to 1; syncs with Chromecast when casting).
+
+  Example:
+
+  ```html
+  <fastpix-player id="player" playback-id="your-playback-id"></fastpix-player>
+  <button onclick="document.getElementById('player').play()">Play</button>
+  <button onclick="document.getElementById('player').pause()">Pause</button>
+  <button onclick="document.getElementById('player').mute()">Mute</button>
+  <button onclick="document.getElementById('player').unmute()">Unmute</button>
+  ```
+
+  These methods are useful when building custom controls (e.g. Shorts-style UI, external buttons, or React/Framework integrations).
+
 - ## Event listeners:
 
   - The player allows developers to listen to various video events through script-side support. You can easily track events like play, pause, seek, and error, enabling customized behavior based on user interaction and player state.
@@ -971,3 +992,236 @@ Hide the default playlist panel and build your own using the slot:
 ```
 
 For full details see `PLAYLIST_DEVELOPER_GUIDE.md`.
+
+## Build your own seekbar with FastPix thumbnail hover previews
+
+This section explains how to build **your own visual seekbar on top of the FastPix seekbar** and still get **thumbnail hover previews** (including the noThumbnail timestamp pill) in both **HTML** and **React 19**.
+
+### Key idea
+
+- **FastPix seekbar stays the real control**: it owns scrubbing, thumbnails, keyboard, Chromecast, etc.
+- Your seekbar is a **visual overlay only**:
+  - Positioned where the FastPix seekbar lives (bottom of the player, with 20px left/right padding).
+  - Uses `pointer-events: none` so mouse/touch still hit the FastPix seekbar underneath.
+- You update your bar’s fill using the underlying video’s `timeupdate` events.
+
+If you want to hide the built-in seekbar track completely but **keep hover thumbnails and click-to-seek intact**, set the internal CSS variable:
+
+```css
+fastpix-player.custom-seekbar {
+  --progress-bar-invisible: 1;
+}
+```
+
+---
+
+### 1. HTML: custom seekbar over FastPix seekbar
+
+#### 1.1. Markup
+
+```html
+<div class="fastpix-wrapper">
+  <fastpix-player
+    id="my-fastpix-player"
+    class="custom-seekbar"
+    playback-id="YOUR_PLAYBACK_ID"
+    spritesheet-src="https://images.fastpix.io/YOUR_PLAYBACK_ID/sprite.vtt.json"
+    style="width: 100%; max-width: 960px; aspect-ratio: 16 / 9;"
+  ></fastpix-player>
+
+  <!-- Custom visual seekbar overlay (does not capture events) -->
+  <div class="my-seekbar-track">
+    <div class="my-seekbar-fill" id="my-seekbar-fill"></div>
+  </div>
+</div>
+```
+
+#### 1.2. CSS (align with FastPix seekbar)
+
+```css
+.fastpix-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  aspect-ratio: 16 / 9;
+}
+
+.my-seekbar-track {
+  position: absolute;
+  bottom: var(--seekbar-bottom, 46px);
+  left: 20px;
+  right: 20px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  overflow: hidden;
+  z-index: 5;
+  pointer-events: none; /* let FastPix seekbar receive hover/click */
+}
+
+.my-seekbar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #b16cea, #5d09c7);
+  border-radius: inherit;
+  transition: width 0.08s linear;
+}
+```
+
+#### 1.3. JS – sync fill with video time
+
+```html
+<script type="module">
+  const playerEl = document.getElementById("my-fastpix-player");
+  const fillEl = document.getElementById("my-seekbar-fill");
+
+  function attachProgressListener() {
+    const vid = playerEl?.video;
+    if (!vid) return;
+
+    const update = () => {
+      if (vid.duration > 0) {
+        const pct = (vid.currentTime / vid.duration) * 100;
+        fillEl.style.width = `${pct}%`;
+      } else {
+        fillEl.style.width = "0%";
+      }
+    };
+
+    update();
+    vid.addEventListener("timeupdate", update);
+    vid.addEventListener("seeking", update);
+    vid.addEventListener("seeked", update);
+  }
+
+  if (playerEl.video) {
+    attachProgressListener();
+  } else {
+    const interval = setInterval(() => {
+      if (playerEl.video) {
+        clearInterval(interval);
+        attachProgressListener();
+      }
+    }, 100);
+  }
+</script>
+```
+
+Because the overlay is non-interactive (`pointer-events: none`), **all hover and click events still go to the FastPix seekbar**, so the built-in thumbnail hover previews (spritesheet or noThumbnail timestamp pill) keep working.
+
+---
+
+### 2. React 19: custom seekbar + thumbnails
+
+#### 2.1. Component
+
+```jsx
+import { useEffect, useRef, useState } from "react";
+
+export function FastpixWithCustomSeekbar({ playbackId, spritesheetSrc }) {
+  const playerRef = useRef(null);
+  const [progress, setProgress] = useState(0); // 0–100
+
+  useEffect(() => {
+    const el = playerRef.current;
+    if (!el) return;
+
+    const attach = () => {
+      const vid = el.video;
+      if (!vid) return;
+
+      const update = () => {
+        if (vid.duration > 0) {
+          setProgress((vid.currentTime / vid.duration) * 100);
+        } else {
+          setProgress(0);
+        }
+      };
+
+      update();
+      vid.addEventListener("timeupdate", update);
+      vid.addEventListener("seeking", update);
+      vid.addEventListener("seeked", update);
+
+      return () => {
+        vid.removeEventListener("timeupdate", update);
+        vid.removeEventListener("seeking", update);
+        vid.removeEventListener("seeked", update);
+      };
+    };
+
+    let cleanup = attach();
+    if (!cleanup) {
+      const id = setInterval(() => {
+        cleanup = attach();
+        if (cleanup) clearInterval(id);
+      }, 100);
+      return () => {
+        clearInterval(id);
+        if (cleanup) cleanup();
+      };
+    }
+
+    return cleanup;
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        maxWidth: 960,
+        aspectRatio: "16 / 9",
+      }}
+    >
+      <fastpix-player
+        ref={playerRef}
+        playback-id={playbackId}
+        spritesheet-src={spritesheetSrc}
+        style={{ width: "100%", height: "100%" }}
+      />
+
+      {/* Visual-only seekbar overlay; FastPix seekbar underneath handles thumbnails */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "var(--seekbar-bottom, 46px)",
+          left: 20,
+          right: 20,
+          height: 4,
+          background: "rgba(255,255,255,0.20)",
+          borderRadius: 999,
+          overflow: "hidden",
+          pointerEvents: "none",
+          zIndex: 5,
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${progress}%`,
+            background: "linear-gradient(90deg, #b16cea, #5d09c7)",
+            borderRadius: "inherit",
+            transition: "width 0.08s linear",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+```
+
+#### 2.2. Usage
+
+```jsx
+export default function App() {
+  return (
+    <FastpixWithCustomSeekbar
+      playbackId="YOUR_PLAYBACK_ID"
+      spritesheetSrc="https://images.fastpix.io/YOUR_PLAYBACK_ID/sprite.vtt.json"
+    />
+  );
+}
+```
+
+Because the overlay seekbar does not intercept pointer events, **hovering and scrubbing still use FastPix’s internal seekbar**, so you keep the exact same thumbnail hover experience while customizing the visual progress bar in React 19.

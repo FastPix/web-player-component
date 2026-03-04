@@ -11,7 +11,7 @@ import {
   hideMenus,
 } from "./DomVisibilityManager";
 import { getCastContext, isChromecastAvailable } from "./CastHandler";
-import { isIOS, renderPlaylistPanel } from "./index";
+import { isDurationAvailable, isIOS, renderPlaylistPanel } from "./index";
 import { renderEpisodeList } from "./EpisodeList";
 
 interface Track {
@@ -234,7 +234,7 @@ function localPlayerLogic(
   }
   context.video.addEventListener("canplay", () => {
     context.isLoading = false;
-    hideLoader(context);
+    if (isDurationAvailable(context)) hideLoader(context);
     if (context.initialPlayClick) {
       showInitialControls(
         context,

@@ -191,7 +191,7 @@ const handleStreamError = (
         context,
         errorMessage?.includes("ready")
           ? "The media is currently unavailable. Please wait until it's ready and then refresh the page."
-          : "Token should not be provided for public streams."
+          : "Invalid Playback URL. The provided playback URL is invalid or incorrectly formatted."
       ),
   };
 
@@ -602,6 +602,11 @@ function getFormattedDuration(
     : "0:00";
 }
 
+function isDurationAvailable(context: any): boolean {
+  const d = context?.video?.duration;
+  return typeof d === "number" && !isNaN(d) && (d > 0 || d === Infinity);
+}
+
 function updateTimeDisplay(context: any): void {
   let currentTime;
   if (isChromecastConnected()) {
@@ -745,11 +750,11 @@ function receiveAttributes(context: any) {
 function DrmSetup(context: any) {
   // Set up drmSystems config before creating Hls
   context.config.drmSystems["com.widevine.alpha"].licenseUrl =
-    `https://api.fastpix.app/v1/on-demand/drm/license/widevine/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.io/v1/on-demand/drm/license/widevine/${context.playbackId}?token=${context.drmToken}`;
   context.config.drmSystems["com.apple.fps"].licenseUrl =
-    `https://api.fastpix.app/v1/on-demand/drm/license/fairplay/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.io/v1/on-demand/drm/license/fairplay/${context.playbackId}?token=${context.drmToken}`;
   context.config.drmSystems["com.apple.fps"].serverCertificateUrl =
-    `https://api.fastpix.app/v1/on-demand/drm/cert/fairplay/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.io/v1/on-demand/drm/cert/fairplay/${context.playbackId}?token=${context.drmToken}`;
 }
 
 export {
@@ -766,4 +771,5 @@ export {
   getSyncedCurrentTime,
   renderPlaylistPanel,
   getSRC,
+  isDurationAvailable,
 };

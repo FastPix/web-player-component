@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.11]
+
+### Features you can use
+
+- **Programmatic playback control** – JavaScript API: `play()`, `pause()`, `mute()`, and `unmute()` for controlling playback and volume from your code (e.g. custom controls, Shorts-style UI, or framework integrations). `mute()`/`unmute()` sync with Chromecast when casting.
+- **Seekbar position** – Use CSS variable `--seekbar-bottom` (e.g. `0px`) to move the progress bar to the very bottom. Thumbnail preview stays above it.
+- **Invisible bar, keep preview & seek** – Set `--progress-bar-invisible: 1` to hide the bar visually while keeping hover thumbnail/timestamp preview and click-to-seek. Use your own progress bar on top.
+- **Style the bar** – Use `--progress-bar-track-unfilled`to style the track.
+- **Thumbnail hover on seekbar** – Hover or drag on the seekbar to see a frame preview (spritesheet) or timestamp pill when no thumbnails are available.
+- **Shorts mode** – Attribute `autoplay-shorts` for muted autoplay, loop, and feed-friendly behavior.
+- **Free keyboard keys** – Attribute `disable-keyboard-controls` so your app can use Arrow Up/Down (e.g. next/prev) without the player capturing them.
+- **Accent color** – Attribute `accent-color` or CSS `--accent-color` for theming; your app can read it to match a custom progress bar.
+
+### Fixed
+
+- **Chromecast** – Fixed casting with m4s segments for both private and public playback;DRM playback casting remains unresolved and is still being worked on.
+- **DRM Playback** - DRM Playback issue in player is fixed..
+
+---
+
 ## [1.0.10]
 ### Changed
 - Updated npm authentication from Classic token to Granular token for improved security and fine-grained permissions.
