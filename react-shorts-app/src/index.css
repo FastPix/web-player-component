@@ -1,0 +1,38 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#root {
+  height: 100%;
+}
+
+/* 9:16 vertical video – centered portrait column, dark sides on desktop */
+.shorts-viewport {
+  background: #0a0a0a;
+}
+.shorts-container fastpix-player {
+  width: 100%;
+  height: 100%;
+  --aspect-ratio: 9/16;
+}
+
+fastpix-player {
+  --middle-controls-mobile: none;
+  --mobile-play-button-initialized: none;
+  --bottom-right-controls-mobile: none;
+  --bottom-right-controls: none;
+  --left-controls-bottom: none;
+  --left-controls-bottom-mobile: none;
+  --play-button-initialized: none;
+  /* Hide progress bar visually but keep it for hover/seek so timestamp preview works */
+  --progress-bar-invisible: 1;
+  --seekbar-bottom: 0px;
+}
