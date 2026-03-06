@@ -1020,90 +1020,492 @@ fastpix-player.custom-seekbar {
 #### 1.1. Markup
 
 ```html
-<div class="fastpix-wrapper">
-  <fastpix-player
-    id="my-fastpix-player"
-    class="custom-seekbar"
-    playback-id="YOUR_PLAYBACK_ID"
-    style="width: 100%; max-width: 960px; aspect-ratio: 16 / 9;"
-  ></fastpix-player>
+    <div class="player-container">
+        <div class="player-wrapper">
+            <!-- FastPix Player -->
+            <!-- Replace YOUR_PLAYBACK_ID_HERE with your actual FastPix playback ID -->
+            <fastpix-player 
+                id="player"
+                playback-id="44163949-97f9-4790-a0a1-3a002a9b4186"
+                loop
+                auto-play
+                disable-keyboard-controls
+                preload="auto"
+            ></fastpix-player>
 
-  <!-- Custom visual seekbar overlay (does not capture events) -->
-  <div class="my-seekbar-track">
-    <div class="my-seekbar-fill" id="my-seekbar-fill"></div>
-  </div>
-</div>
+            <!-- Controls Overlay -->
+            <div class="controls-overlay">
+                <!-- Top Controls -->
+                <div class="top-controls">
+                    <div class="control-group">
+                        <!-- Play/Pause Button -->
+                        <button 
+                            class="control-btn" 
+                            id="playPauseBtn"
+                            aria-label="Play/Pause"
+                        >
+                            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                                <path d="M8 5v14l11-7z" />
+                            </svg>
+                        </button>
+
+                        <!-- Mute/Unmute Button -->
+                        <button 
+                            class="control-btn" 
+                            id="muteBtn"
+                            aria-label="Mute/Unmute"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Fullscreen Button -->
+                    <button 
+                        class="fullscreen-btn" 
+                        id="fullscreenBtn"
+                        aria-label="Fullscreen"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 3 21 3 21 9" />
+                            <polyline points="9 21 3 21 3 15" />
+                            <line x1="21" y1="3" x2="14" y2="10" />
+                            <line x1="3" y1="21" x2="10" y2="14" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Shorts-style progress bar (display-only, RAF-driven) -->
+                <div class="seekbar-shorts" id="seekbarShorts" aria-hidden="true">
+                    <div class="seekbar-shorts-fill" id="seekbarShortsFill"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 ```
 
 #### 1.2. CSS (align with FastPix seekbar)
 
 ```css
-.fastpix-wrapper {
-  position: relative;
-  width: 100%;
-  max-width: 960px;
-  aspect-ratio: 16 / 9;
-}
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-.my-seekbar-track {
-  position: absolute;
-  bottom: var(--seekbar-bottom, 46px);
-  left: 20px;
-  right: 20px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  overflow: hidden;
-  z-index: 5;
-  pointer-events: none; /* let FastPix seekbar receive hover/click */
-}
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #000;
+        }
 
-.my-seekbar-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #b16cea, #5d09c7);
-  border-radius: inherit;
-  transition: width 0.08s linear;
-}
+        .player-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #0a0a0a;
+        }
+
+        .player-wrapper {
+            position: relative;
+            width: min(100vw, 56.25vh);
+            height: 100vh;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        fastpix-player {
+            width: 100%;
+            height: 100%;
+            --aspect-ratio: 9/16;
+            --seekbar-bottom: 0px;
+            --progress-bar-invisible: 1;
+            --middle-controls-mobile: none;
+            --mobile-play-button-initialized: none;
+            --bottom-right-controls-mobile: none;
+            --bottom-right-controls: none;
+            --left-controls-bottom: none;
+            --left-controls-bottom-mobile: none;
+            --play-button-initialized: none;
+        }
+
+        .controls-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .top-controls {
+            position: absolute;
+            top: 24px;
+            left: 0;
+            right: 0;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            box-sizing: border-box;
+            pointer-events: none;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: auto;
+        }
+
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.4);
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            transition: background 0.2s;
+        }
+
+        .control-btn:hover {
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        .control-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .fullscreen-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(0, 0, 0, 0.4);
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            transition: background 0.2s;
+            pointer-events: auto;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(0, 0, 0, 0.6);
+        }
+
+        .fullscreen-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* Shorts-style progress bar: thin at bottom, display-only, accent fill */
+        .seekbar-shorts {
+            position: absolute;
+            bottom: 0;
+            left: 20px;
+            right: 20px;
+            height: 3px;
+            z-index: 3;
+            background: rgba(255, 255, 255, 0.2);
+            pointer-events: none;
+            border-radius: 0 0 16px 16px;
+        }
+        .seekbar-shorts-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: inherit;
+            transition: none;
+        }
 ```
 
-#### 1.3. JS – sync fill with video time
+#### 1.3. JS – sync fill with video time, play(), pause(), mute(), unmute(), full-screen support
 
 ```html
-<script type="module">
-  const playerEl = document.getElementById("my-fastpix-player");
-  const fillEl = document.getElementById("my-seekbar-fill");
+   <script>
+        // Wait for FastPix player to be defined
+        customElements.whenDefined('fastpix-player').then(() => {
+            const player = document.getElementById('player');
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            const muteBtn = document.getElementById('muteBtn');
+            const fullscreenBtn = document.getElementById('fullscreenBtn');
+            const seekbarShorts = document.getElementById('seekbarShorts');
+            const seekbarShortsFill = document.getElementById('seekbarShortsFill');
+            const playerWrapper = document.querySelector('.player-wrapper');
 
-  function attachProgressListener() {
-    const vid = playerEl?.video;
-    if (!vid) return;
+            if (!player) {
+                console.error('Player element not found');
+                return;
+            }
 
-    const update = () => {
-      if (vid.duration > 0) {
-        const pct = (vid.currentTime / vid.duration) * 100;
-        fillEl.style.width = `${pct}%`;
-      } else {
-        fillEl.style.width = "0%";
-      }
-    };
+            // Wait for video element to be available
+            const waitForVideo = () => {
+                if (player.video) {
+                    setupControls();
+                } else {
+                    setTimeout(waitForVideo, 100);
+                }
+            };
 
-    update();
-    vid.addEventListener("timeupdate", update);
-    vid.addEventListener("seeking", update);
-    vid.addEventListener("seeked", update);
-  }
+            const setupControls = () => {
+                const video = player.video;
+                if (!video) return;
 
-  if (playerEl.video) {
-    attachProgressListener();
-  } else {
-    const interval = setInterval(() => {
-      if (playerEl.video) {
-        clearInterval(interval);
-        attachProgressListener();
-      }
-    }, 100);
-  }
-</script>
+                let isPlaying = false;
+                let isMuted = true; // Track mute state separately
+
+                // Update play/pause button icon
+                const updatePlayPauseIcon = () => {
+                    const svg = playPauseBtn.querySelector('svg');
+                    if (isPlaying) {
+                        svg.innerHTML = `
+                            <rect x="6" y="4" width="4" height="16" rx="1" />
+                            <rect x="14" y="4" width="4" height="16" rx="1" />
+                        `;
+                        playPauseBtn.setAttribute('aria-label', 'Pause');
+                    } else {
+                        svg.innerHTML = '<path d="M8 5v14l11-7z" />';
+                        playPauseBtn.setAttribute('aria-label', 'Play');
+                    }
+                };
+
+                // Update mute button icon - icon shows current state (muted = mute icon, unmuted = volume icon)
+                const updateMuteIcon = () => {
+                    const svg = muteBtn.querySelector('svg');
+                    if (isMuted) {
+                        // Currently muted: show mute icon (speaker with X), click will unmute
+                        svg.innerHTML = `
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                            <line x1="23" y1="9" x2="17" y2="15" />
+                            <line x1="17" y1="9" x2="23" y2="15" />
+                        `;
+                        muteBtn.setAttribute('aria-label', 'Unmute');
+                    } else {
+                        // Currently unmuted: show volume icon (speaker with waves), click will mute
+                        svg.innerHTML = `
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+                        `;
+                        muteBtn.setAttribute('aria-label', 'Mute');
+                    }
+                };
+
+                // Play/Pause handler
+                playPauseBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (video.paused) {
+                        video.play().then(() => {
+                            isPlaying = true;
+                            updatePlayPauseIcon();
+                        }).catch(err => {
+                            console.error('Play failed:', err);
+                        });
+                    } else {
+                        video.pause();
+                        isPlaying = false;
+                        updatePlayPauseIcon();
+                    }
+                });
+
+                // Mute/Unmute handler - icon shows what action will happen
+                muteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    
+                    // Ensure player is available
+                    if (!player) return;
+                    
+                    // Icon shows action: mute icon = will mute, volume icon = will unmute
+                    if (isMuted) {
+                        // Currently muted, show volume icon, clicking will unmute
+                        player.unmute?.();
+                        isMuted = false;
+                    } else {
+                        // Currently unmuted, show mute icon, clicking will mute
+                        player.mute?.();
+                        isMuted = true;
+                    }
+                    
+                    // Update icon immediately
+                    updateMuteIcon();
+                });
+
+                // Fullscreen handler
+                fullscreenBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const doc = document;
+                    const docEl = document.documentElement;
+                    const isFullscreen = !!(
+                        doc.fullscreenElement ||
+                        doc.webkitFullscreenElement ||
+                        doc.mozFullScreenElement ||
+                        doc.msFullscreenElement
+                    );
+
+                    if (isFullscreen) {
+                        if (doc.exitFullscreen) {
+                            doc.exitFullscreen();
+                        } else if (doc.webkitExitFullscreen) {
+                            doc.webkitExitFullscreen();
+                        } else if (doc.mozCancelFullScreen) {
+                            doc.mozCancelFullScreen();
+                        } else if (doc.msExitFullscreen) {
+                            doc.msExitFullscreen();
+                        }
+                    } else {
+                        if (playerWrapper.requestFullscreen) {
+                            playerWrapper.requestFullscreen();
+                        } else if (playerWrapper.webkitRequestFullscreen) {
+                            playerWrapper.webkitRequestFullscreen();
+                        } else if (playerWrapper.mozRequestFullScreen) {
+                            playerWrapper.mozRequestFullScreen();
+                        } else if (playerWrapper.msRequestFullscreen) {
+                            playerWrapper.msRequestFullscreen();
+                        }
+                    }
+                });
+
+                // Update fullscreen icon on change
+                const updateFullscreenIcon = () => {
+                    const doc = document;
+                    const isFullscreen = !!(
+                        doc.fullscreenElement ||
+                        doc.webkitFullscreenElement ||
+                        doc.mozFullScreenElement ||
+                        doc.msFullscreenElement
+                    );
+                    const svg = fullscreenBtn.querySelector('svg');
+                    svg.style.transform = isFullscreen ? 'rotate(180deg)' : 'none';
+                    fullscreenBtn.setAttribute('aria-label', isFullscreen ? 'Exit fullscreen' : 'Fullscreen');
+                };
+
+                ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(event => {
+                    document.addEventListener(event, updateFullscreenIcon);
+                });
+
+                // Listen to video events
+                video.addEventListener('play', () => {
+                    isPlaying = true;
+                    updatePlayPauseIcon();
+                });
+
+                video.addEventListener('pause', () => {
+                    isPlaying = false;
+                    updatePlayPauseIcon();
+                });
+
+                // Listen to volume/mute changes to keep icon in sync
+                video.addEventListener('volumechange', () => {
+                    // Sync our tracked state with actual video state
+                    isMuted = video.muted;
+                    updateMuteIcon();
+                });
+
+                // --- Shorts-style progress bar (like ShortsApp): display-only, RAF-driven, accent color ---
+                let accentColor = '#5D09C7';
+                const readAccentColor = () => {
+                    const fromAttr = player.getAttribute('accent-color');
+                    if (fromAttr) {
+                        accentColor = fromAttr;
+                        return;
+                    }
+                    const fromStyle = getComputedStyle(player).getPropertyValue('--accent-color').trim();
+                    if (fromStyle) accentColor = fromStyle;
+                };
+                readAccentColor();
+                setTimeout(readAccentColor, 100);
+                seekbarShortsFill.style.background = accentColor;
+
+                const paintProgress = () => {
+                    const duration = video.duration;
+                    if (duration > 0 && isFinite(duration)) {
+                        const pct = (video.currentTime / duration) * 100;
+                        seekbarShortsFill.style.width = pct + '%';
+                    } else {
+                        seekbarShortsFill.style.width = '0%';
+                    }
+                };
+
+                let rafId = null;
+                const progressLoop = () => {
+                    paintProgress();
+                    rafId = requestAnimationFrame(progressLoop);
+                };
+                const startProgressRAF = () => {
+                    if (rafId == null) rafId = requestAnimationFrame(progressLoop);
+                };
+                const stopProgressRAF = () => {
+                    if (rafId != null) {
+                        cancelAnimationFrame(rafId);
+                        rafId = null;
+                    }
+                    paintProgress();
+                };
+
+                paintProgress();
+                video.addEventListener('play', startProgressRAF);
+                video.addEventListener('playing', startProgressRAF);
+                video.addEventListener('pause', stopProgressRAF);
+                video.addEventListener('ended', stopProgressRAF);
+                video.addEventListener('seeking', paintProgress);
+                video.addEventListener('seeked', paintProgress);
+
+                // Check initial state
+                isPlaying = !video.paused;
+                isMuted = video.muted; // Initialize from video element
+                updatePlayPauseIcon();
+                updateMuteIcon();
+            };
+
+            waitForVideo();
+        }).catch(err => {
+            console.error('Failed to load FastPix player:', err);
+            // Fallback: try loading from CDN
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/@fastpix/fp-player@1.0.12/dist/player.js';
+            script.onload = () => {
+                console.log('FastPix player loaded from CDN');
+                // Retry setup after a delay
+                setTimeout(() => {
+                    customElements.whenDefined('fastpix-player').then(() => {
+                        const player = document.getElementById('player');
+                        if (player && player.video) {
+                            // Re-run setup
+                            location.reload();
+                        }
+                    });
+                }, 500);
+            };
+            document.head.appendChild(script);
+        });
+    </script>
 ```
 
-Because the overlay is non-interactive (`pointer-events: none`), **all hover and click events still go to the FastPix seekbar**, so the built-in thumbnail hover previews (spritesheet or noThumbnail timestamp pill) keep working.
+
+Because the overlay is non-interactive (`pointer-events: none`), all hover and click events still go to the FastPix seekbar, so the built-in thumbnail hover previews (spritesheet or noThumbnail timestamp pill) keep working.
+
+---
+
+## Overall example
+
+For a full **Shorts-style feed** in React 19 (multiple vertical shorts, scroll snapping, per-short custom seekbar, and app-level play/pause/mute/fullscreen), see the official demo:
+
+- **[FastPix/fastpix-web-player-react-shorts-demo](https://github.com/FastPix/fastpix-web-player-react-shorts-demo)**
+
+You can reuse the HTML/CSS/script above in your own page or adapt the pattern from the React demo to get your own seekbar design while keeping FastPix thumbnail hover previews and seeking behavior.
