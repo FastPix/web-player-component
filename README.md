@@ -930,6 +930,16 @@ fastpix-player {
 }
 ```
 
+#### Hide the built-in seekbar while preserving its functionality (useful when adding a custom overlay):
+
+```css
+fastpix-player {
+ --progress-bar-invisible: 1;
+ --seekbar-bottom: 10px;
+}
+```
+
+
 ##### Hide Control sections:
 
 ```css
