@@ -1038,19 +1038,47 @@ Hide the default playlist panel and build your own using the slot:
 
 For full details see `PLAYLIST_DEVELOPER_GUIDE.md`.
 
-## Build your own seekbar with FastPix thumbnail hover previews
+## Build Custom Controls with FastPix (Seekbar, Play/Pause, Mute/Unmute)
 
-This section explains how to build **your own visual seekbar on top of the FastPix seekbar** and still get **thumbnail hover previews** (including the noThumbnail timestamp pill) in both **HTML** and **React 19**.
+This section demonstrates how to build your own **custom player controls** on top of the FastPix Player while still leveraging the player’s built-in capabilities such as **scrubbing, hover thumbnail previews, keyboard interactions, and Chromecast support**.
 
-### Key idea
+In this example, we create:
 
-- **FastPix seekbar stays the real control**: it owns scrubbing, thumbnails, keyboard, Chromecast, etc.
-- Your seekbar is a **visual overlay only**:
-  - Positioned where the FastPix seekbar lives (bottom of the player, with 20px left/right padding).
-  - Uses `pointer-events: none` so mouse/touch still hit the FastPix seekbar underneath.
-- You update your bar’s fill using the underlying video’s `timeupdate` events.
+- A **custom visual seekbar**
+- **Play / Pause** controls
+- **Mute / Unmute** controls
+- **Fullscreen toggle**
 
-If you want to hide the built-in seekbar track completely but **keep hover thumbnails and click-to-seek intact**, set the internal CSS variable:
+The custom UI sits on top of the FastPix player while the underlying player continues to handle core playback behavior.
+
+---
+
+## Key Concept
+
+The FastPix seekbar remains the **actual interactive control** responsible for:
+
+- Video scrubbing
+- Thumbnail hover previews
+- Keyboard navigation
+- Click-to-seek behavior
+- Chromecast and other playback integrations
+
+Your custom seekbar acts as a **visual overlay only**.
+
+- It is positioned exactly where the FastPix seekbar normally appears (bottom of the player with 20px left and right padding).
+- It uses `pointer-events: none` so mouse and touch interactions continue reaching the FastPix seekbar underneath.
+- The visual progress of the bar is synchronized with the video using `timeupdate` events from the underlying video element.
+
+Because the overlay is non-interactive, **FastPix continues to provide hover thumbnails and timestamp previews automatically**.
+
+## Hiding the Built-in Seekbar Track
+
+If you want to **hide the visible FastPix seekbar track while still keeping all its functionality**, you can use the internal CSS variable:
+
+```css
+fastpix-player.custom-seekbar {
+  --progress-bar-invisible: 1;
+}
 
 ```css
 fastpix-player.custom-seekbar {
