@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.13]
+
+### Readme.md
+
+- Updated Readme.md file
+
 ## [1.0.12]
 
 ### Changed
