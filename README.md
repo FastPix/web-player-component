@@ -11,6 +11,10 @@ This SDK simplifies HLS video playback by offering a wide range of customization
   - `auto-play`: Automatically starts playback once the video is loaded, providing a seamless user experience.
 
   - `loop`: Allows the video to repeat automatically after it finishes, perfect for continuous viewing scenarios.
+ 
+  - - `muted`: Starts the video without sound; useful for autoplay compliance and shorts/reel-style viewing.
+
+  - `autoplay-shorts`: Tuned autoplay behavior for vertical shorts; starts playback quickly when the short is in view, often used with `muted` for best browser compatibility.
 
   - **Note** : Some browsers restrict `auto-play` functionality, especially for videos with audio. To comply with these restrictions, `auto-play` often requires explicit user interaction or permission to be enabled. Ensure users are aware and can manually activate `auto-play` if needed.
 
