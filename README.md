@@ -12,7 +12,7 @@ This SDK simplifies HLS video playback by offering a wide range of customization
 
   - `loop`: Allows the video to repeat automatically after it finishes, perfect for continuous viewing scenarios.
  
-  - - `muted`: Starts the video without sound; useful for autoplay compliance and shorts/reel-style viewing.
+  - `muted`: Starts the video without sound; useful for autoplay compliance and shorts/reel-style viewing.
 
   - `autoplay-shorts`: Tuned autoplay behavior for vertical shorts; starts playback quickly when the short is in view, often used with `muted` for best browser compatibility.
 
@@ -440,6 +440,19 @@ For comprehensive documentation and advanced usage, visit the FastPix Player Doc
 
 Enhance your web applications with FastPix Player's seamless streaming and extensive customization options.
 
+### muted:
+
+The `muted` attribute starts the video without sound. It is often used with `auto-play` or `autoplay-shorts` to comply with browser autoplay policies, which typically allow autoplay only when the video is muted.
+
+```html
+<fastpix-player 
+  playback-id="your-playback-id"
+  auto-play
+  muted
+  >
+</fastpix-player>
+```
+
 ### auto-play:
 
 The `auto-play` attribute enables the video to start playing automatically when the player is initialized. This feature requires user interaction or appropriate permissions depending on browser policies.
@@ -449,6 +462,20 @@ The `auto-play` attribute enables the video to start playing automatically when 
   playback-id="your-playback-id"
   stream-type="live-stream" 
   auto-play
+  >
+</fastpix-player>
+```
+
+### autoplay-shorts:
+
+The `autoplay-shorts` attribute provides tuned autoplay behavior for vertical shorts or reel-style feeds. Playback starts quickly when the short comes into view, and it is commonly used with `muted` for reliable autoplay across browsers.
+
+```html
+<fastpix-player 
+  playback-id="your-playback-id"
+  autoplay-shorts
+  muted
+  loop
   >
 </fastpix-player>
 ```
@@ -860,6 +887,10 @@ The options mentioned below help customize the visibility of different UI contro
 - `--playback-rate-button` : Hides or shows the playback rate button for adjusting video speed.
 
 - `--progress-bar` : Toggles the visibility of the progress bar.
+
+- `--progress-bar-invisible: 1`: hides the built-in progress bar visually while keeping hover thumbnails and click-to-seek active.
+
+- `--seekbar-bottom: 0px` : to pin the seekbar to the bottom edge of the player.
 
 - `--pip-button` : Controls the visibility of the Picture-in-Picture button.
 
