@@ -1079,11 +1079,6 @@ If you want to **hide the visible FastPix seekbar track while still keeping all 
 fastpix-player.custom-seekbar {
   --progress-bar-invisible: 1;
 }
-
-```css
-fastpix-player.custom-seekbar {
-  --progress-bar-invisible: 1;
-}
 ```
 
 ---
