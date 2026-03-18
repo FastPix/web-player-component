@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.14]
+
+### Audio & Subtitle Tracks
+
+- **Switch by name (label)** – `setAudioTrack(languageName)` / `setSubtitleTrack(languageName | null)` switch tracks by **label/name** (no numeric ids required).
+- **Set defaults by name** – New attributes:
+  - `default-audio-track="French"`
+  - `default-subtitle-track="English"`
+- **Cleaner track lists** – `getAudioTracks()` / `getSubtitleTracks()` now avoid duplicate entries when multiple tracks share the same label.
+- **Better events for integrations**
+  - `fastpixtracksready` includes the **full current track objects** (`currentAudioTrackLoaded`, `currentSubtitleLoaded`) in addition to the track lists.
+  - `fastpixaudiochange` / `fastpixsubtitlechange` include the **current track object** (`currentTrack`) so you can log/update UI easily.
+
 ## [1.0.13]
 
 ### Readme.md

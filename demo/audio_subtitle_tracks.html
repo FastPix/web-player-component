@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Track Switching Demo</title>
+    <script src="../dist/player.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        fastpix-player {
+            width: 100%;
+            --aspect-ratio: 21/9;
+        }
+        .player-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+        }
+        .custom-subtitle {
+            position: absolute;
+            left: 50%;
+            bottom: 10%;
+            transform: translateX(-50%);
+            max-width: 90%;
+            padding: 6px 12px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            display: none;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 16px;
+            line-height: 1.4;
+            pointer-events: none;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+        }
+        .track-controls {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .track-controls h3 {
+            margin: 0 0 10px 0;
+        }
+        .track-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .track-btn {
+            padding: 8px 16px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .track-btn:hover {
+            border-color: #007bff;
+        }
+        .track-btn.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .current-track {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Audio Track Switching Demo</h1>
+    
+    <div class="player-container">
+        <fastpix-player 
+            playback-id="your-playback-id" 
+            loop 
+            auto-play 
+            muted
+            preload="auto"
+            default-audio-track="French"
+            default-subtitle-track="English"
+            >
+        </fastpix-player>
+        <div class="custom-subtitle" data-role="custom-subtitle"></div>
+    </div>
+
+    <div class="track-controls">
+        <h3>Audio Tracks</h3>
+        <div id="audioButtons" class="track-buttons">
+            <em>Loading tracks...</em>
+        </div>
+        <div id="currentAudio" class="current-track"></div>
+    </div>
+
+    <div class="track-controls">
+        <h3>Subtitle Tracks</h3>
+        <div id="subtitleButtons" class="track-buttons">
+            <em>Loading tracks...</em>
+        </div>
+        <div id="currentSubtitle" class="current-track"></div>
+    </div>
+
+    <script>
+        // Controls below target the first player on the page,
+        // but custom subtitles are scoped per-player container.
+        const player = document.querySelector('fastpix-player');
+        const audioButtonsContainer = document.getElementById('audioButtons');
+        const subtitleButtonsContainer = document.getElementById('subtitleButtons');
+        const currentAudioDisplay = document.getElementById('currentAudio');
+        const currentSubtitleDisplay = document.getElementById('currentSubtitle');
+        function getCustomSubtitleDiv(forPlayer) {
+            const container = forPlayer.closest('.player-container');
+            return container ? container.querySelector('[data-role="custom-subtitle"]') : null;
+        }
+        let subtitlePollId = null;
+
+        // Wait for tracks to be ready
+        player.addEventListener('fastpixtracksready', (e) => {
+            console.log("Tracks ready!", e.detail);
+            
+            // Get audio tracks
+            const audioTracks = player.getAudioTracks();
+            console.log("Audio tracks:", audioTracks);
+            
+            // Render audio track buttons
+            renderAudioButtons(audioTracks);
+
+            // Subtitle tracks often become available slightly after MANIFEST_PARSED.
+            // Poll getSubtitleTracks() for a short window so we render
+            // all detected subtitle tracks automatically, without needing to click Off.
+            if (subtitlePollId) {
+                clearInterval(subtitlePollId);
+            }
+            const startTime = Date.now();
+            subtitlePollId = setInterval(() => {
+                const subtitleTracks = player.getSubtitleTracks();
+                console.log("Polled subtitle tracks:", subtitleTracks);
+                if (subtitleTracks && subtitleTracks.length > 0) {
+                    clearInterval(subtitlePollId);
+                    subtitlePollId = null;
+                    // Render and highlight whichever subtitle track is currently "showing"
+                    // so that the actively playing subtitle is highlighted by default.
+                    renderSubtitleButtons(subtitleTracks);
+                } else if (Date.now() - startTime > 10000) { // safety timeout 10s
+                    clearInterval(subtitlePollId);
+                    subtitlePollId = null;
+                }
+            }, 500);
+        });
+
+        // Custom subtitle overlay: attach to ALL players so each renders separately.
+        document.querySelectorAll('fastpix-player').forEach((p) => {
+            p.addEventListener('fastpixsubtitlecue', (e) => {
+                const { text, language, startTime, endTime } = /** @type {CustomEvent} */ (e).detail;
+                console.log('Current subtitle cue:', text, language, startTime, endTime);
+
+                // Only show cues when a subtitle track is actually enabled (not Off).
+                const subtitleTracks = p.getSubtitleTracks();
+                const hasActiveSubtitle = Array.isArray(subtitleTracks) && subtitleTracks.some(t => t.isCurrent);
+
+                const customSubtitleDiv = getCustomSubtitleDiv(p);
+                if (customSubtitleDiv) {
+                    if (hasActiveSubtitle && text) {
+                        customSubtitleDiv.textContent = text;
+                        customSubtitleDiv.style.display = 'block';
+                    } else {
+                        customSubtitleDiv.textContent = '';
+                        customSubtitleDiv.style.display = 'none';
+                    }
+                }
+            });
+        });
+
+        // Listen for audio track changes
+        player.addEventListener('fastpixaudiochange', (e) => {
+            const { tracks, currentTrack } = /** @type {CustomEvent} */ (e).detail || {};
+            const resolvedCurrent = currentTrack || (Array.isArray(tracks) ? tracks.find(t => t.isCurrent) : null);
+            console.log("Audio changed. Current track:", resolvedCurrent);
+            renderAudioButtons(tracks || player.getAudioTracks());
+        });
+
+        // Listen for subtitle track changes
+        player.addEventListener('fastpixsubtitlechange', (e) => {
+            const { tracks, currentTrack } = /** @type {CustomEvent} */ (e).detail || {};
+            const resolvedCurrent = currentTrack || (Array.isArray(tracks) ? tracks.find(t => t.isCurrent) : null);
+            console.log("Subtitle changed. Current track:", resolvedCurrent);
+            renderSubtitleButtons(tracks || player.getSubtitleTracks());
+        });
+
+        function renderAudioButtons(tracks) {
+            if (!tracks || tracks.length === 0) {
+                audioButtonsContainer.innerHTML = '<em>No audio tracks available</em>';
+                currentAudioDisplay.textContent = '';
+                return;
+            }
+
+            audioButtonsContainer.innerHTML = '';
+            
+            tracks.forEach(track => {
+                const btn = document.createElement('button');
+                btn.className = 'track-btn' + (track.isCurrent ? ' active' : '');
+                btn.textContent = `${track.label} (${track.language || 'unknown'})`;
+                btn.onclick = () => {
+                    console.log(`Switching to audio track: ${track.label} (${track.language || 'unknown'})`);
+                    // Public API is label-driven (no numeric ids / language codes)
+                    player.setAudioTrack(track.label);
+                };
+                audioButtonsContainer.appendChild(btn);
+            });
+
+            const current = tracks.find(t => t.isCurrent);
+            currentAudioDisplay.textContent = current 
+                ? `Current: ${current.label} (id: ${current.id})` 
+                : '';
+        }
+
+        function renderSubtitleButtons(tracks) {
+            subtitleButtonsContainer.innerHTML = '';
+            
+            // Add "Off" button
+            const offBtn = document.createElement('button');
+            offBtn.className = 'track-btn' + (!tracks.some(t => t.isCurrent) ? ' active' : '');
+            offBtn.textContent = 'Off';
+            offBtn.onclick = () => {
+                console.log('Turning subtitles off');
+                // Prefer the new public API if available
+                if (typeof player.disableSubtitles === 'function') {
+                    player.disableSubtitles();
+                } else {
+                    // Fallback for older builds
+                    player.setSubtitleTrack(null);
+                }
+                // Also immediately clear any currently displayed custom subtitle text
+                const customSubtitleDiv = getCustomSubtitleDiv(player);
+                if (customSubtitleDiv) {
+                    customSubtitleDiv.textContent = '';
+                    customSubtitleDiv.style.display = 'none';
+                }
+                // Update status text
+                currentSubtitleDisplay.textContent = 'Current: Off';
+            };
+            subtitleButtonsContainer.appendChild(offBtn);
+
+            if (!tracks || tracks.length === 0) {
+                currentSubtitleDisplay.textContent = 'No subtitle tracks available';
+                return;
+            }
+            
+            tracks.forEach(track => {
+                const btn = document.createElement('button');
+                btn.className = 'track-btn' + (track.isCurrent ? ' active' : '');
+                btn.textContent = `${track.label} (${track.language || 'unknown'})`;
+                btn.onclick = () => {
+                    console.log(`Switching to subtitle track: ${track.label} (${track.language || 'unknown'})`);
+                    // Public API is label-driven (no numeric ids / language codes)
+                    player.setSubtitleTrack(track.label);
+                };
+                subtitleButtonsContainer.appendChild(btn);
+            });
+
+            const current = tracks.find(t => t.isCurrent);
+            currentSubtitleDisplay.textContent = current 
+                ? `Current: ${current.label} (id: ${current.id})` 
+                : 'Current: Off';
+        }
+    </script>
+</body>
+</html>

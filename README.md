@@ -44,6 +44,70 @@ This SDK simplifies HLS video playback by offering a wide range of customization
 
   - Users can switch between available subtitles and audio tracks during playback, offering a personalized viewing experience. This feature allows viewers to choose their preferred language or audio option easily.
 
+- ## Audio & Subtitle Tracks (integration guide)
+
+  This section documents **how to read tracks, set defaults, switch tracks, and consume events**.
+  For the full API reference, see **`AUDIO_SUBTITLE_TRACKS_API.md`** (in this folder).
+
+  - **Integration steps (recommended)**:
+    - Include the player script (`dist/player.js`) and add a `<fastpix-player>` element with a `playback-id`.
+    - Optionally set defaults by **name/label** using:
+      - `default-audio-track="French"`
+      - `default-subtitle-track="English"`
+    - Attach listeners for:
+      - `fastpixtracksready` (initial track snapshot; may re-emit once subtitle `textTracks` attach)
+      - `fastpixaudiochange` / `fastpixsubtitlechange` (only for explicit changes)
+    - Build your UI from `getAudioTracks()` / `getSubtitleTracks()` and call `setAudioTrack(...)` / `setSubtitleTrack(...)` to switch.
+
+  - **Important behavior**:
+    - **Track switching is label-only**: no numeric ids are accepted by `setAudioTrack` / `setSubtitleTrack`.
+    - **Duplicate labels are de-duped** (case-insensitive): if multiple tracks share the same label/name, the player keeps one entry (prefers the currently active one).
+    - **`fastpixtracksready` timing**: audio tracks are known at HLS `MANIFEST_PARSED`, but subtitle `textTracks` can attach slightly later, so the player may emit `fastpixtracksready` again with populated subtitle tracks.
+
+  - **Attributes**:
+
+    | Attribute | Type | Meaning |
+    |---|---:|---|
+    | `default-audio-track` | string | Default **audio** track by label/name (case-insensitive) |
+    | `default-subtitle-track` | string | Default **subtitle** track by label/name (case-insensitive) |
+    | `disable-hidden-captions` | boolean | Disables subtitles/captions automatically on load |
+
+  - **Methods**:
+
+    | Method | Purpose |
+    |---|---|
+    | `getAudioTracks()` | Returns de-duped audio track list (each track has `label`, `language`, `isCurrent`) |
+    | `getSubtitleTracks()` | Returns de-duped subtitle list (each track has `label`, `language`, `isCurrent`) |
+    | `setAudioTrack(languageName)` | Switch audio by **label/name** |
+    | `setSubtitleTrack(languageName \| null)` | Switch subtitles by **label/name**, or `null` to turn Off |
+    | `disableSubtitles()` | Turns subtitles Off (equivalent to UI “Off”) |
+
+  - **Events**:
+
+    | Event | When it fires | `event.detail` (key fields) |
+    |---|---|---|
+    | `fastpixtracksready` | After manifest parse; may re-emit when subtitle `textTracks` attach | `audioTracks`, `subtitleTracks`, `currentAudioTrackLoaded`, `currentSubtitleLoaded` (plus legacy ids) |
+    | `fastpixaudiochange` | Only when audio is explicitly changed (menu click or `setAudioTrack`) | `tracks`, `currentId`, `currentTrack` |
+    | `fastpixsubtitlechange` | Only when subtitles are explicitly changed (menu click / Off / programmatic) | `tracks`, `currentId`, `currentTrack` |
+    | `fastpixsubtitlecue` | Whenever a cue changes for the active subtitle track | `{ text, language, startTime, endTime }` |
+
+  - **Demo explained (`test/index.html`)**:
+    - **Markup**:
+      - `<fastpix-player ... default-audio-track="French" default-subtitle-track="English">` sets initial tracks by **name**.
+      - Each `.player-container` includes a `<div class="custom-subtitle" data-role="custom-subtitle"></div>` overlay for custom-rendered subtitles.
+    - **Custom subtitle overlay (per player/session)**:
+      - The demo attaches a `fastpixsubtitlecue` listener to **every** `fastpix-player` on the page.
+      - It scopes rendering to the player’s own container using `closest('.player-container')`, so multiple players don’t overwrite each other.
+      - The overlay is `display: none` by default and only shown when a subtitle is enabled and a non-empty cue arrives.
+    - **Track UI**:
+      - On `fastpixtracksready`, the demo calls `getAudioTracks()` and renders buttons.
+      - Subtitles can appear later, so it **polls** `getSubtitleTracks()` briefly and renders subtitle buttons once available.
+    - **Logging current track details**:
+      - `fastpixaudiochange` / `fastpixsubtitlechange` listeners log the **current track object** (`detail.currentTrack`), regardless of whether the change came from the built-in menu or the programmatic API.
+
+  - **Full reference**:
+    - See **`AUDIO_SUBTITLE_TRACKS_API.md`** for the complete API, examples, and best practices.
+
 - ## Styling and color customization:
 
   - Customize the player’s visual elements using the `accent-color`, `primary-color`, and `secondary-color` attributes:

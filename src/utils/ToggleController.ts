@@ -452,7 +452,7 @@ function toggleSubtitlesMenu(context: any) {
   hideSubtitlesButton.textContent = "Off";
   hideSubtitlesButton.className = "offSubtitles";
   hideSubtitlesButton.addEventListener("click", () => {
-    disableAllSubtitles(context);
+    disableAllSubtitles(context, { emitEvent: true });
     context.subtitleMenu.style.display = "none"; // Close the subtitle menu
   });
   context.subtitleMenu.appendChild(hideSubtitlesButton);
@@ -473,7 +473,7 @@ function toggleSubtitlesMenu(context: any) {
     menuItem.textContent = track.label ?? `Language ${index + 1}`;
 
     menuItem.addEventListener("click", () => {
-      changeSubtitleTrack(context, index); // Pass the track index
+      changeSubtitleTrack(context, index, { emitEvent: true }); // Pass the track index
     });
 
     if (track.mode === "showing") {
