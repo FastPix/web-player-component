@@ -19,6 +19,7 @@ import {
 import { resizeVideoWidth } from "./ResizeVideo";
 import {
   disableAllSubtitles,
+  changeSubtitleTrack,
   initializeSubtitles,
   preloadSubtitles,
 } from "./SubtitleHandler";
@@ -57,10 +58,88 @@ const videoListeners = (context: any) => {
       const tracksArray = Array.from(context.video.textTracks);
 
       if (context.hasAttribute("disable-hidden-captions")) {
-        disableAllSubtitles(context);
+        // Do not emit fastpixsubtitlechange here: this is an automatic setup path
+        disableAllSubtitles(context, { emitEvent: false });
       } else if (context.isOnline) {
-        initializeSubtitles(context, tracksArray);
+        // Optional: default-subtitle-track attribute by NAME (case-insensitive).
+        // Example: <fastpix-player default-subtitle-track="English">
+        const defaultSubtitleName = context.getAttribute?.(
+          "default-subtitle-track"
+        );
+        if (
+          typeof defaultSubtitleName === "string" &&
+          defaultSubtitleName.trim()
+        ) {
+          const key = defaultSubtitleName.trim().toLowerCase();
+          const indexToShow = tracksArray.findIndex((t: any) => {
+            if (!t) return false;
+            if (t.kind !== "subtitles" && t.kind !== "captions") return false;
+            const label = (t.label || "").toString().trim().toLowerCase();
+            return label === key;
+          });
+          if (indexToShow !== -1) {
+            // Do not emit fastpixsubtitlechange: this is an automatic default
+            changeSubtitleTrack(context, indexToShow, { emitEvent: false });
+            try {
+              const lang = (tracksArray[indexToShow] as any)?.language;
+              if (lang) localStorage.setItem("subtitleLang", lang);
+            } catch {}
+          } else {
+            initializeSubtitles(context, tracksArray);
+          }
+        } else {
+          initializeSubtitles(context, tracksArray);
+        }
       }
+
+      // Subtitles can attach *after* MANIFEST_PARSED; if so, re-emit a corrected tracks snapshot.
+      try {
+        setTimeout(() => {
+          try {
+            const player: any = context;
+            if (typeof player.getSubtitleTracks !== "function") return;
+            const subs = player.getSubtitleTracks();
+            const count = Array.isArray(subs) ? subs.length : 0;
+            const prev =
+              typeof player._lastTracksReadySubtitleCount === "number"
+                ? player._lastTracksReadySubtitleCount
+                : 0;
+            player._lastTracksReadySubtitleCount = count;
+            if (
+              count > 0 &&
+              prev === 0 &&
+              typeof player.dispatchEvent === "function"
+            ) {
+              const aud =
+                typeof player.getAudioTracks === "function"
+                  ? player.getAudioTracks()
+                  : [];
+              player.dispatchEvent(
+                new CustomEvent("fastpixtracksready", {
+                  detail: {
+                    audioTracks: aud,
+                    subtitleTracks: subs,
+                    currentAudioId:
+                      typeof player.currentAudioTrackId === "number"
+                        ? player.currentAudioTrackId
+                        : null,
+                    currentSubtitleId:
+                      typeof player.currentSubtitleTrackId === "number"
+                        ? player.currentSubtitleTrackId
+                        : null,
+                    currentAudioTrackLoaded: Array.isArray(aud)
+                      ? (aud.find((t: any) => t?.isCurrent) ?? null)
+                      : null,
+                    currentSubtitleLoaded: Array.isArray(subs)
+                      ? (subs.find((t: any) => t?.isCurrent) ?? null)
+                      : null,
+                  },
+                })
+              );
+            }
+          } catch {}
+        }, 0);
+      } catch {}
     });
 
     // Instead of setTimeout, rely on actual loading:

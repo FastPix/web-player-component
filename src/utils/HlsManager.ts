@@ -531,8 +531,9 @@ function handleHlsQualityAndTrackSetup(context: any) {
     Hls.Events.MANIFEST_PARSED,
     (_: any, data: { levels: any; audioTracks: any; subtitleTracks: any }) => {
       let levelsRetrieved = data.levels;
-      const audioTracks = data.audioTracks;
       const subtitleTracks = data.subtitleTracks;
+
+      context.audioTracksRetrieved = data.audioTracks;
 
       const renditionOrderAttr = context.getAttribute("rendition-order");
       const levels =
@@ -543,11 +544,43 @@ function handleHlsQualityAndTrackSetup(context: any) {
       // Do not override startLevel: let ABR choose so playback starts as soon as possible.
       // When network improves, hls.js (nextLevel = -1) will switch to higher quality automatically.
       setupResolutionUI(context, levels);
-      setupAudioTracks(context, audioTracks);
+      setupAudioTracksUI(context, context.audioTracksRetrieved);
+      setupAudioTracks(context); // Populate player.audioTracks with formatted track info
       setupSubtitleButton(context, subtitleTracks);
       setupResolutionMenuButton(context);
       // Auto is always highlighted by default.
       // Only a manual user click on a rendition button changes the highlight.
+
+      // Emit fastpixtracksready event so external UIs know tracks are available
+      try {
+        const { audioTracks, currentAudioTrackId } =
+          getFormattedAudioTracks(context);
+        const { subtitleTracks: formattedSubtitles, currentSubtitleTrackId } =
+          getFormattedSubtitleTracks(context);
+        const currentAudioTrackLoaded = Array.isArray(audioTracks)
+          ? (audioTracks.find((t: any) => t?.isCurrent) ?? null)
+          : null;
+        const currentSubtitleLoaded = Array.isArray(formattedSubtitles)
+          ? (formattedSubtitles.find((t: any) => t?.isCurrent) ?? null)
+          : null;
+
+        context.dispatchEvent(
+          new CustomEvent("fastpixtracksready", {
+            detail: {
+              audioTracks,
+              subtitleTracks: formattedSubtitles,
+              // Backward-compatible ids (numeric indices) – prefer the full objects below.
+              currentAudioId: currentAudioTrackId,
+              currentSubtitleId: currentSubtitleTrackId,
+              // Preferred: full current track objects
+              currentAudioTrackLoaded,
+              currentSubtitleLoaded,
+            },
+          })
+        );
+      } catch (e) {
+        console.warn("fastpixtracksready event emission failed:", e);
+      }
     }
   );
 
@@ -585,12 +618,10 @@ function setupResolutionUI(context: any, levels: any) {
   context.resolutionMenu.appendChild(context.autoResolutionButton);
   context.resolutionButtons = levels.map(
     (level: { height: any; width: any }, index: any) => {
-      // For vertical video (height > width) use height for the label,
-      // otherwise use width (e.g., landscape or square).
+      // Use the *vertical* pixel count ("p") for labels.
+      // For 9:16 video, this should be 854p/1280p/1920p (not 480p/720p/1080p).
       const dimension =
-        typeof level.height === "number" &&
-        typeof level.width === "number" &&
-        level.height > level.width
+        typeof level.height === "number" && level.height > level.width
           ? level.width
           : level.height;
 
@@ -639,27 +670,201 @@ function handleResolutionSwitch(context: any, index: number, height: any) {
   toggleResolutionMenu(context);
 }
 
-function setupAudioTracks(context: any, audioTracks: any) {
-  context.audioMenu.innerHTML = "";
-  const audioButtons = audioTracks.map((track: { name: any }, index: number) =>
-    createAudioButton(context, track.name, index)
-  );
+/**
+ * Track info shape returned by getAudioTracks / getSubtitleTracks.
+ */
+type TrackInfo = {
+  id: number;
+  label: string;
+  language?: string;
+  isDefault: boolean;
+  isCurrent: boolean;
+};
 
-  context.audioMenu.append(...audioButtons);
+function normalizeTrackKey(label: string): string {
+  return (label || "").toString().trim().toLowerCase();
+}
 
-  // Prefer manifest default flag; else a track named "default"; else index 0
+/**
+ * De-dupe tracks by label (case-insensitive), keeping order.
+ * If duplicates exist, prefer the entry that isCurrent, otherwise keep the first.
+ */
+function dedupeByLabel(tracks: TrackInfo[]): TrackInfo[] {
+  const out: TrackInfo[] = [];
+  const posByKey = new Map<string, number>();
+  for (const t of tracks) {
+    const key = normalizeTrackKey(t.label);
+    if (!key) {
+      out.push(t);
+      continue;
+    }
+    const existingPos = posByKey.get(key);
+    if (existingPos === undefined) {
+      posByKey.set(key, out.length);
+      out.push(t);
+      continue;
+    }
+    const existing = out[existingPos];
+    // Prefer the current one if duplicates exist
+    if (!existing.isCurrent && t.isCurrent) {
+      out[existingPos] = t;
+    }
+  }
+  return out;
+}
+
+/**
+ * Helper: returns formatted audio tracks from HLS instance.
+ * Used by player.getAudioTracks() to expose tracks to external UIs.
+ */
+function getFormattedAudioTracks(context: any): {
+  audioTracks: TrackInfo[];
+  currentAudioTrackId: number | null;
+} {
+  const hlsAny: any = context.hls;
+  // Use audioTracksRetrieved (from MANIFEST_PARSED) or fall back to hls.audioTracks
+  const rawTracks: any[] = Array.isArray(context.audioTracksRetrieved)
+    ? context.audioTracksRetrieved
+    : Array.isArray(hlsAny?.audioTracks)
+      ? hlsAny.audioTracks
+      : [];
+
+  // Determine current track index:
+  // 1. Use hls.audioTrack if it's a valid index (>= 0)
+  // 2. Otherwise find the default track (default: true flag)
+  // 3. Otherwise a track named "default"
+  // 4. Otherwise use index 0
+  let currentIndex: number =
+    typeof hlsAny?.audioTrack === "number" && hlsAny.audioTrack >= 0
+      ? hlsAny.audioTrack
+      : -1;
+
+  if (currentIndex < 0 && rawTracks.length > 0) {
+    // Optional: default-audio-track attribute by NAME (case-insensitive).
+    // Example: <fastpix-player default-audio-track="French">
+    const defaultAudioName = context.getAttribute?.("default-audio-track");
+    if (typeof defaultAudioName === "string" && defaultAudioName.trim()) {
+      const key = defaultAudioName.trim().toLowerCase();
+      const byName = rawTracks.findIndex(
+        (t: any) =>
+          ((t?.name ?? "") as string).toString().trim().toLowerCase() === key
+      );
+      if (byName >= 0) currentIndex = byName;
+    }
+
+    // If not set, find default track from manifest
+    if (currentIndex < 0) {
+      currentIndex = rawTracks.findIndex((t: any) => t?.default === true);
+    }
+    if (currentIndex < 0) {
+      currentIndex = rawTracks.findIndex(
+        (t: any) => (t?.name ?? "").toString().toLowerCase() === "default"
+      );
+    }
+    if (currentIndex < 0) {
+      currentIndex = 0; // Fall back to first track
+    }
+  }
+
+  const audioTracksAll: TrackInfo[] = rawTracks.map((t, index) => {
+    const lang = (t?.lang ?? "").toString().trim();
+    return {
+      // Keep id as the underlying HLS index so it's stable even if we de-dupe display entries.
+      id: index,
+      label: (t?.name ?? "").toString().trim() || lang || `Track ${index + 1}`,
+      language: lang || undefined,
+      isDefault: !!t?.default,
+      isCurrent: index === currentIndex,
+    };
+  });
+
+  const audioTracks = dedupeByLabel(audioTracksAll);
+  const currentTrack = audioTracksAll.find((t) => t.isCurrent);
+  const currentAudioTrackId = currentTrack ? currentTrack.id : null;
+
+  return { audioTracks, currentAudioTrackId };
+}
+
+/**
+ * Helper: returns formatted subtitle tracks from video.textTracks.
+ * Used by player.getSubtitleTracks() to expose tracks to external UIs.
+ */
+function getFormattedSubtitleTracks(context: any): {
+  subtitleTracks: TrackInfo[];
+  currentSubtitleTrackId: number | null;
+} {
+  const video = context.video as HTMLVideoElement | undefined;
+  if (!video || !video.textTracks) {
+    return { subtitleTracks: [], currentSubtitleTrackId: null };
+  }
+
+  const tracks: TextTrack[] = Array.from(video.textTracks || []);
+  const filtered = tracks
+    .map((t, index) => ({ track: t, index }))
+    .filter(
+      ({ track }) => track.kind === "subtitles" || track.kind === "captions"
+    );
+
+  const subtitleTracks: TrackInfo[] = filtered.map(({ track, index }) => {
+    const lang = (track.language || "").toString().trim();
+    return {
+      id: index,
+      label:
+        (track.label || lang || "").toString().trim() || `Track ${index + 1}`,
+      language: lang || undefined,
+      isDefault: track.mode === "showing",
+      isCurrent: track.mode === "showing",
+    };
+  });
+
+  const subtitleTracksDeduped = dedupeByLabel(subtitleTracks);
+  const current = subtitleTracks.find((t) => t.isCurrent);
+  const currentSubtitleTrackId = current ? current.id : null;
+
+  return { subtitleTracks: subtitleTracksDeduped, currentSubtitleTrackId };
+}
+
+function setupAudioTracks(context: any) {
+  const { audioTracks, currentAudioTrackId } = getFormattedAudioTracks(context);
+  context.audioTracks = audioTracks;
+  context.currentAudioTrackId = currentAudioTrackId;
+}
+
+function setupAudioTracksUI(context: any, audioTracks: any) {
+  // Determine default track:
+  // 1. Prefer default-audio-track attribute by NAME (case-insensitive)
+  // 2. Otherwise prefer manifest default flag
+  // 3. Otherwise a track named "default"
+  // 4. Otherwise index 0
   let defaultIndex = -1;
   if (Array.isArray(audioTracks) && audioTracks.length > 0) {
-    defaultIndex = audioTracks.findIndex((t: any) => t?.default === true);
-    if (defaultIndex === -1)
+    const defaultAudioName = context.getAttribute?.("default-audio-track");
+    if (typeof defaultAudioName === "string" && defaultAudioName.trim()) {
+      const key = defaultAudioName.trim().toLowerCase();
+      const byName = audioTracks.findIndex(
+        (t: any) => (t?.name ?? "").toString().trim().toLowerCase() === key
+      );
+      if (byName >= 0) defaultIndex = byName;
+    }
+    if (defaultIndex === -1) {
+      defaultIndex = audioTracks.findIndex((t: any) => t?.default === true);
+    }
+    if (defaultIndex === -1) {
       defaultIndex = audioTracks.findIndex(
         (t: any) => (t?.name ?? "").toString().toLowerCase() === "default"
       );
-    if (defaultIndex === -1) defaultIndex = 0;
+    }
+    if (defaultIndex === -1) {
+      defaultIndex = 0;
+    }
   }
 
-  if (audioButtons[defaultIndex]) {
-    setActiveButton(audioButtons[defaultIndex], context.audioMenu.children);
+  // Apply default selection (do not emit change event here)
+  if (
+    defaultIndex >= 0 &&
+    Array.isArray(audioTracks) &&
+    audioTracks.length > 0
+  ) {
     try {
       context.hls.audioTrack = defaultIndex;
       // Ensure it's applied after internal state settles
@@ -674,13 +879,58 @@ function setupAudioTracks(context: any, audioTracks: any) {
     }
   }
 
+  // Build audio menu from the *deduped* TrackInfo list so duplicates
+  // (same label/name) don't appear multiple times.
+  context.audioMenu.innerHTML = "";
+  const { audioTracks: formattedAudioTracks } =
+    getFormattedAudioTracks(context);
+  const audioButtons = (formattedAudioTracks || []).map((t) =>
+    createAudioButton(context, t.label, t.id, !!t.isCurrent)
+  );
+  context.audioMenu.append(...audioButtons);
+
+  // Ensure active button matches current track
+  const currentPos = (formattedAudioTracks || []).findIndex(
+    (t) => t?.isCurrent
+  );
+  if (currentPos >= 0 && audioButtons[currentPos]) {
+    setActiveButton(audioButtons[currentPos], context.audioMenu.children);
+  }
+
   context.audioMenuButton.style.display =
-    audioTracks.length > 1
+    (formattedAudioTracks || []).length > 1
       ? context.audioMenuButton.classList.add("audioMenuButtonShow")
       : context.audioMenuButton.classList.remove("audioMenuButtonShow");
 }
 
-function createAudioButton(context: any, name: string, index: number) {
+function emitAudioChange(context: any) {
+  try {
+    const tracks =
+      typeof context.getAudioTracks === "function"
+        ? context.getAudioTracks()
+        : [];
+    const currentId =
+      context.currentAudioTrackId !== undefined
+        ? context.currentAudioTrackId
+        : null;
+    const currentTrack = Array.isArray(tracks)
+      ? (tracks.find((t: any) => t?.isCurrent) ?? null)
+      : null;
+
+    context.dispatchEvent(
+      new CustomEvent("fastpixaudiochange", {
+        detail: { tracks, currentId, currentTrack },
+      })
+    );
+  } catch {}
+}
+
+function createAudioButton(
+  context: any,
+  name: string,
+  index: number,
+  isActive: boolean
+) {
   const button = documentObject.createElement("button");
   button.className = "audioSelectorButtons";
   const displayName =
@@ -690,19 +940,16 @@ function createAudioButton(context: any, name: string, index: number) {
   button.textContent = displayName;
   button.title = displayName;
 
-  if (index === 0) {
+  if (isActive) {
     button.classList.add("active");
-    try {
-      context.hls.audioTrack = index;
-    } catch (error) {
-      console.error("Error switching audio track:", error);
-    }
   }
 
   button.addEventListener("click", (event) => {
     context.hls.audioTrack = index;
     setActiveButton(button, context.audioMenu.children);
     toggleAudioMenu(context);
+    // Emit so external UIs always receive the current track snapshot
+    emitAudioChange(context);
     event.stopPropagation();
   });
 
@@ -775,4 +1022,8 @@ export {
   hlsListeners,
   handleHlsQualityAndTrackSetup,
   configHls,
+  getFormattedAudioTracks,
+  getFormattedSubtitleTracks,
 };
+
+export type { TrackInfo };

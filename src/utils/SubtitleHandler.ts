@@ -67,7 +67,10 @@ function moveSubtitlesDown(context: Context): void {
   context.wrapper.classList.remove("subtitles-up");
 }
 
-function disableAllSubtitles(context: Context): void {
+function disableAllSubtitles(
+  context: Context,
+  opts?: { emitEvent?: boolean }
+): void {
   const tracksArray = Array.from(context.video.textTracks);
 
   for (const track of tracksArray) {
@@ -81,9 +84,31 @@ function disableAllSubtitles(context: Context): void {
   }
 
   localStorage.removeItem("subtitleLang");
+
+  if (opts?.emitEvent) {
+    try {
+      const tracks =
+        typeof (context as any).getSubtitleTracks === "function"
+          ? (context as any).getSubtitleTracks()
+          : [];
+      const currentId =
+        (context as any).currentSubtitleTrackId !== undefined
+          ? (context as any).currentSubtitleTrackId
+          : null;
+      (context as any).dispatchEvent(
+        new CustomEvent("fastpixsubtitlechange", {
+          detail: { tracks, currentId, currentTrack: null },
+        })
+      );
+    } catch {}
+  }
 }
 
-function changeSubtitleTrack(context: Context, trackIndex: number): void {
+function changeSubtitleTrack(
+  context: Context,
+  trackIndex: number,
+  opts?: { emitEvent?: boolean }
+): void {
   context.subtitleMenu.style.display = "none";
   const tracksArray = Array.from(context.video.textTracks);
 
@@ -95,6 +120,27 @@ function changeSubtitleTrack(context: Context, trackIndex: number): void {
     } else {
       track.mode = "disabled";
     }
+  }
+
+  if (opts?.emitEvent) {
+    try {
+      const tracks =
+        typeof (context as any).getSubtitleTracks === "function"
+          ? (context as any).getSubtitleTracks()
+          : [];
+      const currentId =
+        (context as any).currentSubtitleTrackId !== undefined
+          ? (context as any).currentSubtitleTrackId
+          : null;
+      const currentTrack = Array.isArray(tracks)
+        ? (tracks.find((t: any) => t?.isCurrent) ?? null)
+        : null;
+      (context as any).dispatchEvent(
+        new CustomEvent("fastpixsubtitlechange", {
+          detail: { tracks, currentId, currentTrack },
+        })
+      );
+    } catch {}
   }
 }
 

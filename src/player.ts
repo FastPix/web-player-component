@@ -29,12 +29,17 @@ import {
   showLoader,
   hideLoader,
 } from "./utils/DomVisibilityManager";
-import { hideDefaultSubtitlesStyles } from "./utils/SubtitleHandler";
+import {
+  hideDefaultSubtitlesStyles,
+  disableAllSubtitles,
+} from "./utils/SubtitleHandler";
 import {
   configHls,
   handleHlsQualityAndTrackSetup,
   Hls,
   hlsListeners,
+  getFormattedAudioTracks,
+  getFormattedSubtitleTracks,
 } from "./utils/HlsManager";
 import {
   configureForiOS,
@@ -202,6 +207,24 @@ class FastPixPlayer extends windowObject.HTMLElement {
   playlist: any[] = [];
   currentIndex: number = 0;
   retryButtonVisible: boolean;
+
+  // Public track state for external UIs (e.g. Shorts React app)
+  audioTracks: {
+    id: number;
+    label: string;
+    language?: string;
+    isDefault: boolean;
+    isCurrent: boolean;
+  }[] = [];
+  subtitleTracks: {
+    id: number;
+    label: string;
+    language?: string;
+    isDefault: boolean;
+    isCurrent: boolean;
+  }[] = [];
+  currentAudioTrackId: number | null = null;
+  currentSubtitleTrackId: number | null = null;
   wrapper: HTMLElement;
   controlsContainer: HTMLElement;
   leftControls: HTMLElement;
@@ -277,7 +300,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
   playlistItems?: HTMLDivElement;
   externalPlaylistOpen: boolean = false;
   playlistSlot?: HTMLDivElement;
-  playerButtonsSlot?: HTMLDivElement;
   cartButton!: HTMLButtonElement;
   cartSidebar!: HTMLDivElement;
   isCartOpen: boolean = false;
@@ -441,15 +463,16 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.video.textTracks.addEventListener(
       "addtrack",
       (event: { track: any }) => {
-        const track = event.track;
+        const track = event.track as TextTrack;
         if (track.kind === "subtitles" || track.kind === "captions") {
           track.mode = "hidden"; // Hide default subtitles
 
           track.addEventListener("cuechange", () => {
             if (track.activeCues && track.activeCues.length > 0) {
-              const cue = track.activeCues[0];
+              const cue = track.activeCues[0] as VTTCue | TextTrackCue;
               if (cue && this.initialPlayClick) {
-                this.subtitleContainer.innerHTML = cue.text;
+                const text = (cue as any).text ?? "";
+                this.subtitleContainer.innerHTML = text;
                 this.subtitleContainer.classList.add("contained");
               } else {
                 this.subtitleContainer.innerHTML = "";
@@ -458,6 +481,36 @@ class FastPixPlayer extends windowObject.HTMLElement {
             } else {
               this.subtitleContainer.innerHTML = "";
               this.subtitleContainer.classList.remove("contained");
+            }
+
+            // Emit a custom event with the current subtitle text at this timestamp.
+            try {
+              const activeText =
+                track.activeCues && track.activeCues.length > 0
+                  ? (((track.activeCues[0] as any).text as string) ?? "")
+                  : "";
+              const activeCue = track.activeCues
+                ? (track.activeCues[0] as any)
+                : null;
+
+              this.dispatchEvent(
+                new CustomEvent("fastpixsubtitlecue", {
+                  detail: {
+                    text: activeText,
+                    language: track.language || undefined,
+                    startTime:
+                      typeof activeCue?.startTime === "number"
+                        ? activeCue.startTime
+                        : undefined,
+                    endTime:
+                      typeof activeCue?.endTime === "number"
+                        ? activeCue.endTime
+                        : undefined,
+                  },
+                })
+              );
+            } catch {
+              // ignore subtitle cue dispatch errors
             }
           });
         }
@@ -1738,29 +1791,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
       slotted.forEach((el) => this.playlistSlot?.appendChild(el));
     }
 
-    // Handle player-buttons slot
-    this.playerButtonsSlot = document.createElement("div");
-    this.playerButtonsSlot.className = "player-buttons-slot";
-    this.playerButtonsSlot.style.position = "absolute";
-    this.playerButtonsSlot.style.top = "20px";
-    this.playerButtonsSlot.style.right = "20px";
-    this.playerButtonsSlot.style.zIndex = "1000";
-    this.playerButtonsSlot.style.display = "flex";
-    this.playerButtonsSlot.style.gap = "10px";
-    this.controlsContainer.appendChild(this.playerButtonsSlot);
-
-    // Move any player-buttons slotted children into the slot container
-    const playerButtonsSlotted = Array.from(this.children).filter(
-      (el: Element) => {
-        const slotAttr = el.getAttribute("slot");
-        const dataSlot = el.getAttribute("data-fastpix-slot");
-        return slotAttr === "player-buttons" || dataSlot === "player-buttons";
-      }
-    );
-    playerButtonsSlotted.forEach((el) =>
-      this.playerButtonsSlot?.appendChild(el)
-    );
-
     // playbackRateButton click handler
     playbackRateButtonClickHandler(this);
 
@@ -2071,13 +2101,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
   }
 
   /**
-   * Returns the internal player-buttons slot container for custom UI injection
-   */
-  public getPlayerButtonsSlot(): HTMLDivElement | null {
-    return this.playerButtonsSlot ?? null;
-  }
-
-  /**
    * Returns the video overlay div (covers the video, pointer-events: none by default).
    * Use this to inject custom UI (e.g. play/pause) on top of the video. Set
    * pointer-events: auto on injected elements so they receive clicks.
@@ -2099,6 +2122,192 @@ class FastPixPlayer extends windowObject.HTMLElement {
       this.customPrev = handler;
     } else {
       console.warn("setPrevHandler expects a function");
+    }
+  }
+
+  /**
+   * Returns a snapshot of available audio tracks from HLS.
+   * Useful for custom UIs (e.g. Shorts React app).
+   * Returns: { id: string; label: string; language?: string; isDefault: boolean; isCurrent: boolean; }[]
+   */
+  public getAudioTracks() {
+    const { audioTracks, currentAudioTrackId } = getFormattedAudioTracks(this);
+    this.audioTracks = audioTracks;
+    this.currentAudioTrackId = currentAudioTrackId;
+    return this.audioTracks;
+  }
+
+  /**
+   * Returns a snapshot of available subtitle/caption tracks from the video element.
+   * Returns: { id: string; label: string; language?: string; isDefault: boolean; isCurrent: boolean; }[]
+   */
+  public getSubtitleTracks() {
+    const { subtitleTracks, currentSubtitleTrackId } =
+      getFormattedSubtitleTracks(this);
+    this.subtitleTracks = subtitleTracks;
+    this.currentSubtitleTrackId = currentSubtitleTrackId;
+    return this.subtitleTracks;
+  }
+
+  /**
+   * Programmatically switch the active audio track.
+   * Accepts a label/language string (no numeric ids).
+   *
+   * Matching rules (case-insensitive):
+   * - First match by `TrackInfo.label`
+   */
+  public setAudioTrack(languageName: string) {
+    const hlsAny: any = this.hls as any;
+    if (!hlsAny || !Array.isArray(hlsAny.audioTracks)) return;
+
+    if (typeof languageName !== "string") {
+      console.warn(
+        "setAudioTrack expects a label/language string (numeric track ids are not supported)."
+      );
+      return;
+    }
+
+    const key = languageName.trim().toLowerCase();
+    if (!key) {
+      console.warn("setAudioTrack: empty label/language string");
+      return;
+    }
+
+    // Resolve against underlying HLS audio tracks (handles de-duped snapshots).
+    const rawTracks: any[] = Array.isArray(this.audioTracksRetrieved)
+      ? this.audioTracksRetrieved
+      : Array.isArray(hlsAny.audioTracks)
+        ? hlsAny.audioTracks
+        : [];
+    const resolvedIndex = rawTracks.findIndex(
+      (t: any) => (t?.name ?? "").toString().trim().toLowerCase() === key
+    );
+
+    if (resolvedIndex < 0 || resolvedIndex >= rawTracks.length) {
+      console.warn(`Audio track "${languageName}" not found`);
+      return;
+    }
+
+    try {
+      hlsAny.audioTrack = resolvedIndex;
+      // Refresh cached info and emit change event
+      const tracks = this.getAudioTracks();
+      const currentId = this.currentAudioTrackId;
+
+      this.dispatchEvent(
+        new CustomEvent("fastpixaudiochange", {
+          detail: {
+            tracks,
+            currentId,
+            currentTrack: Array.isArray(tracks)
+              ? (tracks.find((t: any) => t?.isCurrent) ?? null)
+              : null,
+          },
+        })
+      );
+    } catch (error) {
+      console.error("Error switching audio track via setAudioTrack:", error);
+    }
+  }
+
+  /**
+   * Programmatically switch the active subtitle track.
+   * Accepts a label/language string, or null to turn subtitles off (no numeric ids).
+   *
+   * Matching rules (case-insensitive):
+   * - First match by `TrackInfo.label`
+   */
+  public setSubtitleTrack(languageName: string | null) {
+    if (!this.video || !this.video.textTracks) return;
+
+    const tracks: TextTrack[] = Array.from(this.video.textTracks || []);
+    // Map to only subtitle/caption kind
+    const subtitleEntries = tracks
+      .map((track, index) => ({ track, index }))
+      .filter(
+        ({ track }) => track.kind === "subtitles" || track.kind === "captions"
+      );
+
+    if (languageName === null) {
+      // Turn off all subtitles
+      subtitleEntries.forEach(({ track }) => {
+        track.mode = "disabled";
+      });
+    } else {
+      if (typeof languageName !== "string") {
+        console.warn(
+          "setSubtitleTrack expects a label/language string or null (numeric track ids are not supported)."
+        );
+        return;
+      }
+
+      const key = languageName.trim().toLowerCase();
+      if (!key) {
+        console.warn("setSubtitleTrack: empty label/language string");
+        return;
+      }
+
+      // Resolve against underlying textTracks entries (handles de-duped snapshots).
+      const resolvedEntry = subtitleEntries.find(
+        ({ track }) =>
+          (track?.label ?? "").toString().trim().toLowerCase() === key
+      );
+      const resolvedIndex =
+        resolvedEntry && typeof resolvedEntry.index === "number"
+          ? resolvedEntry.index
+          : -1;
+
+      if (resolvedIndex < 0) {
+        console.warn(`Subtitle track "${languageName}" not found`);
+        return;
+      }
+
+      // Enable the track matching the resolved index
+      subtitleEntries.forEach(({ track, index }) => {
+        track.mode = index === resolvedIndex ? "showing" : "disabled";
+      });
+    }
+
+    // Refresh cached info and emit change event
+    const tracksInfo = this.getSubtitleTracks();
+    const currentId = this.currentSubtitleTrackId;
+
+    this.dispatchEvent(
+      new CustomEvent("fastpixsubtitlechange", {
+        detail: {
+          tracks: tracksInfo,
+          currentId,
+          currentTrack: Array.isArray(tracksInfo)
+            ? (tracksInfo.find((t: any) => t?.isCurrent) ?? null)
+            : null,
+        },
+      })
+    );
+  }
+
+  /**
+   * Public helper to fully disable subtitles from external UIs.
+   * This is equivalent to clicking the "Off" button in the built‑in subtitle menu:
+   * it calls disableAllSubtitles (clearing tracks, container, and storage)
+   * and then emits fastpixsubtitlechange so listeners can update their state.
+   */
+  public disableSubtitles() {
+    // Mirror internal Off-button behavior
+    disableAllSubtitles(this as any);
+
+    // Refresh cached info and emit change event so external UIs stay in sync
+    const tracksInfo = this.getSubtitleTracks();
+    const currentId = this.currentSubtitleTrackId;
+
+    this.dispatchEvent(
+      new CustomEvent("fastpixsubtitlechange", {
+        detail: { tracks: tracksInfo, currentId },
+      })
+    );
+
+    // If the internal subtitle menu is open, close it to match Off-button UX
+    if (this.subtitleMenu && this.subtitleMenu.style?.display !== "none") {
+      this.subtitleMenu.style.display = "none";
     }
   }
 }
