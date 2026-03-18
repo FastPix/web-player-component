@@ -50,6 +50,35 @@ player.addEventListener('fastpixaudiochange', (e) => {
 
 ---
 
+## At-a-glance (implementation-backed)
+
+The tables below reflect the current implementation in:
+
+- `src/player.ts`
+- `src/utils/HlsManager.ts`
+- `src/utils/VideoListeners.ts`
+
+### Surface area summary
+
+| Category | Name | Implemented | Notes |
+|---|---|---:|---|
+| **Attributes** | `default-audio-track` | ✅ | Case-insensitive match against HLS audio track `name`; applied during HLS `MANIFEST_PARSED` setup (no `fastpixaudiochange` emitted for the initial default). |
+| **Attributes** | `default-subtitle-track` | ✅ | Case-insensitive match against `video.textTracks[].label`; applied on `loadedmetadata` (no `fastpixsubtitlechange` emitted for the initial default). |
+| **Attributes** | `disable-hidden-captions` | ✅ | Disables all captions/subtitles on load (automatic path; does not emit `fastpixsubtitlechange`). |
+| **Methods** | `getAudioTracks()` | ✅ | Returns a snapshot de-duped by `label` (case-insensitive). |
+| **Methods** | `setAudioTrack(label)` | ✅ | Switches by label/name only (case-insensitive). Emits `fastpixaudiochange`. |
+| **Methods** | `getSubtitleTracks()` | ✅ | Returns a snapshot de-duped by `label` (case-insensitive). |
+| **Methods** | `setSubtitleTrack(label \| null)` | ✅ | `null` turns subtitles Off. Emits `fastpixsubtitlechange`. |
+| **Methods** | `disableSubtitles()` | ✅ | Equivalent to the built-in UI “Off”. Emits `fastpixsubtitlechange` (payload is slightly smaller; see Events table). |
+| **Properties** | `audioTracks` / `subtitleTracks` | ✅ | Public snapshots (same shape as `TrackInfo[]`). Prefer event + method snapshots for integration. |
+| **Properties** | `currentAudioTrackId` / `currentSubtitleTrackId` | ✅ | Current underlying id/index (or `null` for Off). Do not persist ids across assets. |
+| **Events** | `fastpixtracksready` | ✅ | Emitted after manifest parse, and may re-emit once subtitle `textTracks` attach. |
+| **Events** | `fastpixaudiochange` | ✅ | Emitted only for explicit audio changes (menu click or `setAudioTrack`). |
+| **Events** | `fastpixsubtitlechange` | ✅ | Emitted only for explicit subtitle changes (menu click / Off / `setSubtitleTrack` / `disableSubtitles`). |
+| **Events** | `fastpixsubtitlecue` | ✅ | Emitted on subtitle cue changes with `{ text, language, startTime, endTime }`. |
+
+---
+
 ## API Reference
 
 ### Methods
@@ -142,6 +171,24 @@ player.setSubtitleTrack(null);
 
 ---
 
+#### `disableSubtitles()`
+
+Turns subtitles Off (equivalent to selecting “Off” in the built-in subtitle menu).
+
+```typescript
+disableSubtitles(): void
+```
+
+**Example:**
+
+```javascript
+player.disableSubtitles();
+```
+
+**Note:** Dispatches `fastpixsubtitlechange`. In the current implementation, this event may omit `currentTrack` in `event.detail` (see Events table).
+
+---
+
 ### Properties
 
 | Property | Type | Description |
@@ -227,6 +274,8 @@ Fired when the subtitle track is explicitly changed (menu click / Off / `setSubt
 }
 ```
 
+**Implementation note:** When subtitles are turned Off via `disableSubtitles()`, the event is still `fastpixsubtitlechange`, but `event.detail` may be `{ tracks, currentId }` (without `currentTrack`). Consumers should treat `currentTrack` as optional and derive it from `tracks.find(t => t.isCurrent)` when needed.
+
 **Example:**
 ```javascript
 player.addEventListener('fastpixsubtitlechange', (e) => {
@@ -237,6 +286,23 @@ player.addEventListener('fastpixsubtitlechange', (e) => {
         console.log('Subtitles turned off');
     }
 });
+```
+
+---
+
+#### `fastpixsubtitlecue`
+
+Fired on cue updates for subtitle/caption tracks.
+
+**Detail:**
+
+```typescript
+{
+  text: string;
+  language?: string;
+  startTime?: number;
+  endTime?: number;
+}
 ```
 
 ---
@@ -271,6 +337,18 @@ If not provided (or no match), the player follows the existing subtitle initiali
 
 ---
 
+#### `disable-hidden-captions`
+
+Disables all subtitles/captions automatically on load. Useful when you want subtitles to start Off, even if the stream includes them.
+
+```html
+<fastpix-player playback-id="your-playback-id" disable-hidden-captions></fastpix-player>
+```
+
+**Note:** This is an automatic initialization path and does not emit `fastpixsubtitlechange`.
+
+---
+
 ## TrackInfo Object
 
 Each track is represented by a `TrackInfo` object:
@@ -280,10 +358,20 @@ type TrackInfo = {
   id: number;           // Internal numeric id (do not use for selection)
   label: string;        // Display name (e.g., "English", "French")
   language?: string;    // Language code (e.g., "en", "fr", "hi")
-  isDefault: boolean;   // Whether this track is marked as default in the manifest
+  isDefault: boolean;   // Audio: manifest DEFAULT flag. Subtitles: currently showing (implementation treats showing as default).
   isCurrent: boolean;   // Whether this track is currently active
 };
 ```
+
+### TrackInfo field semantics (audio vs subtitles)
+
+| Field | Audio tracks | Subtitle tracks |
+|---|---|---|
+| `id` | Underlying HLS audio track index | Underlying `video.textTracks` index |
+| `label` | HLS `name` (fallbacks to `lang` / `Track N`) | TextTrack `label` (fallbacks to `language` / `Track N`) |
+| `language` | HLS `lang` (if present) | TextTrack `language` (if present) |
+| `isDefault` | `true` if marked default in manifest | `true` when the track is currently `showing` (same as `isCurrent`) |
+| `isCurrent` | `true` for the current active track | `true` for the track with `mode === "showing"` |
 
 ---
 

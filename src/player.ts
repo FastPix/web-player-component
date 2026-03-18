@@ -1,6 +1,3 @@
-// Add the following CSS to your stylesheet:
-// .playlistButtonVisible { display: inline-block; }
-// .playlistButtonHidden { display: none; }
 import { videoListeners } from "./utils/VideoListeners";
 import { KeyBoardInputManager } from "./utils/KeyboardHandler";
 import {

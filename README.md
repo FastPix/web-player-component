@@ -47,7 +47,9 @@ This SDK simplifies HLS video playback by offering a wide range of customization
 - ## Audio & Subtitle Tracks (integration guide)
 
   This section documents **how to read tracks, set defaults, switch tracks, and consume events**.
-  For the full API reference, see **`AUDIO_SUBTITLE_TRACKS_API.md`** (in this folder).
+  
+  - For a step-by-step developer guide, see **`AUDIO_SUBTITLE_TRACKS_DEVELOPER_GUIDE.md`**.
+  - For the full API reference (methods/properties/events/attributes/types), see **`AUDIO_SUBTITLE_TRACKS_API.md`**.
 
   - **Integration steps (recommended)**:
     - Include the player script (`dist/player.js`) and add a `<fastpix-player>` element with a `playback-id`.

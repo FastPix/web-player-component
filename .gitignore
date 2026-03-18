@@ -5,3 +5,6 @@ dist
 /test
 
 my-react-app
+
+# Local/temporary docs
+AUDIO_SUBTITLE_TRACKS_DEVELOPER_GUIDE.md
