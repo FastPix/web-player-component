@@ -72,7 +72,8 @@ This SDK simplifies HLS video playback by offering a wide range of customization
     |---|---:|---|
     | `default-audio-track` | string | Default **audio** track by label/name (case-insensitive) |
     | `default-subtitle-track` | string | Default **subtitle** track by label/name (case-insensitive) |
-    | `disable-hidden-captions` | boolean | Disables subtitles/captions automatically on load |
+    | `disable-hidden-captions` | boolean | Starts with all subtitles/captions Off on load (no `fastpixsubtitlechange` emitted for this initial disable). Users or code can still turn subtitles back on via UI or API. |
+    | `hide-native-subtitles` | boolean | Keeps the internal subtitle container visually empty while **still** emitting `fastpixsubtitlecue` and track events. Use this when you render your own subtitle overlay and never want the built‑in text to appear. |
 
   - **Methods**:
 
@@ -1194,6 +1195,26 @@ fastpix-player.custom-seekbar {
                                 <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
                             </svg>
                         </button>
+
+                        <!-- Skip −10s / +10s (player.seekBackward / seekForward) -->
+                        <button
+                            class="control-btn"
+                            id="skipBackBtn"
+                            type="button"
+                            aria-label="Skip back 10 seconds"
+                            title="−10s"
+                        >
+                            <span style="font-size:11px;font-weight:600;line-height:1;">−10</span>
+                        </button>
+                        <button
+                            class="control-btn"
+                            id="skipForwardBtn"
+                            type="button"
+                            aria-label="Skip forward 10 seconds"
+                            title="+10s"
+                        >
+                            <span style="font-size:11px;font-weight:600;line-height:1;">+10</span>
+                        </button>
                     </div>
 
                     <!-- Fullscreen Button -->
@@ -1370,7 +1391,9 @@ fastpix-player.custom-seekbar {
         }
 ```
 
-#### 1.3. JS – sync fill with video time, play(), pause(), mute(), unmute(), full-screen support
+#### 1.3. JS – sync fill with video time, play(), pause(), mute(), unmute(), seekForward() / seekBackward(), full-screen support
+
+This example uses the **underlying `video`** for play/pause and progress (keeps the custom play icon in sync with `video` events). It uses the **FastPix element** for **`mute()` / `unmute()`** (Chromecast-aware) and for **relative seek**: **`player.seekBackward(10)`** / **`player.seekForward(10)`** (seconds are clamped to the media range). You can instead call **`player.play()`** / **`player.pause()`** if you prefer one API surface.
 
 ```html
    <script>
@@ -1379,6 +1402,8 @@ fastpix-player.custom-seekbar {
             const player = document.getElementById('player');
             const playPauseBtn = document.getElementById('playPauseBtn');
             const muteBtn = document.getElementById('muteBtn');
+            const skipBackBtn = document.getElementById('skipBackBtn');
+            const skipForwardBtn = document.getElementById('skipForwardBtn');
             const fullscreenBtn = document.getElementById('fullscreenBtn');
             const seekbarShorts = document.getElementById('seekbarShorts');
             const seekbarShortsFill = document.getElementById('seekbarShortsFill');
@@ -1478,6 +1503,17 @@ fastpix-player.custom-seekbar {
                     
                     // Update icon immediately
                     updateMuteIcon();
+                });
+
+                // Skip back / forward (programmatic API on the custom element)
+                const SKIP_SECONDS = 10;
+                skipBackBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    player.seekBackward?.(SKIP_SECONDS);
+                });
+                skipForwardBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    player.seekForward?.(SKIP_SECONDS);
                 });
 
                 // Fullscreen handler

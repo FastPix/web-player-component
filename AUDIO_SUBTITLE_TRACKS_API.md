@@ -52,11 +52,7 @@ player.addEventListener('fastpixaudiochange', (e) => {
 
 ## At-a-glance (implementation-backed)
 
-The tables below reflect the current implementation in:
-
-- `src/player.ts`
-- `src/utils/HlsManager.ts`
-- `src/utils/VideoListeners.ts`
+The tables below reflect the current support in fastpix web player:
 
 ### Surface area summary
 
@@ -64,7 +60,8 @@ The tables below reflect the current implementation in:
 |---|---|---:|---|
 | **Attributes** | `default-audio-track` | ✅ | Case-insensitive match against HLS audio track `name`; applied during HLS `MANIFEST_PARSED` setup (no `fastpixaudiochange` emitted for the initial default). |
 | **Attributes** | `default-subtitle-track` | ✅ | Case-insensitive match against `video.textTracks[].label`; applied on `loadedmetadata` (no `fastpixsubtitlechange` emitted for the initial default). |
-| **Attributes** | `disable-hidden-captions` | ✅ | Disables all captions/subtitles on load (automatic path; does not emit `fastpixsubtitlechange`). |
+| **Attributes** | `disable-hidden-captions` | ✅ | Starts with all captions/subtitles Off on load via an internal disable-all call; does **not** emit `fastpixsubtitlechange` for this initial state. Users or code can still enable subtitles later. |
+| **Attributes** | `hide-native-subtitles` | ✅ | Prevents the internal subtitle container from painting any text while leaving `TextTrack` state and `fastpixsubtitlecue` events fully active. Recommended when you render a custom overlay and never want built‑in text. |
 | **Methods** | `getAudioTracks()` | ✅ | Returns a snapshot de-duped by `label` (case-insensitive). |
 | **Methods** | `setAudioTrack(label)` | ✅ | Switches by label/name only (case-insensitive). Emits `fastpixaudiochange`. |
 | **Methods** | `getSubtitleTracks()` | ✅ | Returns a snapshot de-duped by `label` (case-insensitive). |

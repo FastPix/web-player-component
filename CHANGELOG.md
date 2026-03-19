@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.15]
+
+### Audio & Subtitle UX (tracks + subtitles)
+
+- **New attribute: `hide-native-subtitles`**  
+  - When present, the internal subtitle container never paints text, so the built‑in overlay stays visually hidden even when a track is enabled.  
+  - All subtitle APIs still work as usual: `fastpixsubtitlecue` continues to fire with `{ text, language, startTime, endTime }` and the native `TextTrack` state is unchanged.  
+  - Recommended when you render subtitles in your own UI (React overlay, custom HTML) and want to guarantee there is no duplicate text from the built‑in overlay.
+
+- **Clarified behavior: `disable-hidden-captions`**  
+  - Now applied as an **initial state only**: on load, the player disables all subtitles/captions without emitting `fastpixsubtitlechange`.  
+  - After load, users (or your code) can still turn subtitles on via the built‑in menu or `setSubtitleTrack(...)`; the internal overlay is allowed to show again unless `hide-native-subtitles` is also set.
+
+### Programmatic seek
+
+- **`seekForward(seconds)`** and **`seekBackward(seconds)`** – New methods on the `<fastpix-player>` element to jump the playhead forward or back by a given number of seconds (clamped to the media range). Use them for custom “+10s” / “−10s” buttons or app shortcuts; the built-in skip buttons still follow `forward-seek-offset` / `backward-seek-offset` when set. Documented in README (Programmatic playback control and section 1.3 custom-controls example).
+
 ## [1.0.14]
 
 ### Audio & Subtitle Tracks

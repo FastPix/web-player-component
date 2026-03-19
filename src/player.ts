@@ -56,6 +56,7 @@ import {
   ExitFullScreenIcon,
 } from "./icons/FullScreenIcon/index";
 import {
+  adjustCurrentTimeBy,
   DrmSetup,
   getSRC,
   isDurationAvailable,
@@ -462,20 +463,33 @@ class FastPixPlayer extends windowObject.HTMLElement {
       (event: { track: any }) => {
         const track = event.track as TextTrack;
         if (track.kind === "subtitles" || track.kind === "captions") {
-          track.mode = "hidden"; // Hide default subtitles
+          track.mode = "hidden"; // Hide browser's native subtitles
 
           track.addEventListener("cuechange", () => {
-            if (track.activeCues && track.activeCues.length > 0) {
-              const cue = track.activeCues[0] as VTTCue | TextTrackCue;
-              if (cue && this.initialPlayClick) {
-                const text = (cue as any).text ?? "";
-                this.subtitleContainer.innerHTML = text;
-                this.subtitleContainer.classList.add("contained");
+            // hide-native-subtitles: permanently suppress the built-in subtitleContainer
+            // even when the user enables subtitles via menu or setSubtitleTrack.
+            // Subtitles still flow through fastpixsubtitlecue so external UIs can render text.
+            const hideSubtitleContainer = this.hasAttribute(
+              "hide-native-subtitles"
+            );
+
+            if (!hideSubtitleContainer) {
+              if (track.activeCues && track.activeCues.length > 0) {
+                const cue = track.activeCues[0] as VTTCue | TextTrackCue;
+                if (cue && this.initialPlayClick) {
+                  const text = (cue as any).text ?? "";
+                  this.subtitleContainer.innerHTML = text;
+                  this.subtitleContainer.classList.add("contained");
+                } else {
+                  this.subtitleContainer.innerHTML = "";
+                  this.subtitleContainer.classList.remove("contained");
+                }
               } else {
                 this.subtitleContainer.innerHTML = "";
                 this.subtitleContainer.classList.remove("contained");
               }
             } else {
+              // Ensure container stays empty when hide-native-subtitles is set.
               this.subtitleContainer.innerHTML = "";
               this.subtitleContainer.classList.remove("contained");
             }
@@ -1512,6 +1526,14 @@ class FastPixPlayer extends windowObject.HTMLElement {
         hlsListeners(this);
       } catch {}
     } catch {}
+  }
+
+  seekForward(seconds: number) {
+    adjustCurrentTimeBy(this, seconds);
+  }
+
+  seekBackward(seconds: number) {
+    adjustCurrentTimeBy(this, -seconds);
   }
 
   connectedCallback() {
