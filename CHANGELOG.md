@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.16]
 
+### Updated
+
+- **Analytics / Video Data** – `@fastpix/video-data-core` dependency range updated to `^1.0.7`.
+
 ### Live playback
 
 - **Cleaner live UI** – For `stream-type="live-stream"`, the duration-style time readout stays hidden so the experience matches open-ended live viewing.
