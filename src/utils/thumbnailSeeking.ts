@@ -1,4 +1,3 @@
-import { updateChapterMarkers } from "./ChaptersHandlers";
 import { documentObject } from "./CustomElements";
 import { formatVideoDuration } from "./index";
 
@@ -20,7 +19,6 @@ function attachProgressBarListeners(
 ) {
   context.progressBar.addEventListener("mousemove", (event: MouseEvent) => {
     showThumbnail(event.clientX);
-    updateChapterMarkers(context);
   });
   context.progressBar.addEventListener("mousedown", (event: MouseEvent) => {
     showThumbnail(event.clientX);
@@ -37,7 +35,6 @@ function attachProgressBarListeners(
     (event: TouchEvent) => {
       const touch = event.touches[0];
       showThumbnail(touch.clientX);
-      updateChapterMarkers(context);
     },
     { passive: true }
   ); // Marking as passive);
@@ -480,32 +477,42 @@ function customizeThumbnail(context: any) {
 
   const token = context.getAttribute("token");
   const hasThumbnailTime = context.hasAttribute("thumbnail-time");
+  const playbackId = context.playbackId as string | null | undefined;
 
-  // Helper function to build the thumbnail URL
-  const buildThumbnailUrl = (baseUrl: string) => {
-    let url = `${baseUrl}/${context.playbackId}/thumbnail.jpg`;
+  const normalizePosterBase = (raw: string | null | undefined): string => {
+    if (raw == null) return "";
+    const s = String(raw).trim();
+    if (!s || s.toLowerCase() === "null") return "";
+    return s.replace(/\/+$/, "");
+  };
+
+  // spritesheet-src missing → getAttribute is null; String coercions produced "null/pid/thumbnail.jpg"
+  // (relative to demo origin → /demo/null/...). Prefer thumbnailUrlFinal from receiveAttributes.
+  const buildThumbnailUrl = (baseUrl: string): string => {
+    const base = normalizePosterBase(baseUrl);
+    if (!base || !playbackId) return "";
+    let url = `${base}/${playbackId}/thumbnail.jpg`;
     if (token) url += `?token=${token}`;
     if (hasThumbnailTime)
       url += `${token ? "&" : "?"}time=${context.thumbnailTimeAttribute}`;
     return url;
   };
 
-  // Generate primary thumbnail URL
-  const thumbnailUrl = buildThumbnailUrl(context.thumbnailUrlAttribute);
-  const thumbnailImage = new Image();
-  thumbnailImage.src = thumbnailUrl;
-  thumbnailImage.onload = () => {
-    context.video.poster = thumbnailUrl;
-  };
+  const resolvedBase =
+    normalizePosterBase(context.thumbnailUrlAttribute) ||
+    normalizePosterBase(context.thumbnailUrlFinal);
 
-  // If no poster and no thumbnailUrlAttribute, use the fallback thumbnail URL
-  if (!context.hasAttribute("poster") && !context.thumbnailUrlAttribute) {
-    const fallbackThumbnailUrl = buildThumbnailUrl(context.thumbnailUrlFinal);
-    const fallbackThumbnailImage = new Image();
-    fallbackThumbnailImage.src = fallbackThumbnailUrl;
-    fallbackThumbnailImage.onload = () => {
-      context.video.poster = fallbackThumbnailUrl;
-    };
+  if (resolvedBase && playbackId && !context.posterAttribute) {
+    const thumbnailUrl = buildThumbnailUrl(resolvedBase);
+    if (thumbnailUrl) {
+      const thumbnailImage = new Image();
+      thumbnailImage.onload = () => {
+        if (!context.posterAttribute) {
+          context.video.poster = thumbnailUrl;
+        }
+      };
+      thumbnailImage.src = thumbnailUrl;
+    }
   }
 
   // Set custom poster if defined

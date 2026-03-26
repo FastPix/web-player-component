@@ -20,7 +20,12 @@ function isValidMarker(marker: any): marker is {
 }
 
 // Helper functions to reduce cognitive complexity
-function handleOpenLinkAction(context: any, prod: any): boolean {
+function handleOpenLinkAction(
+  context: any,
+  prod: any,
+  /** If set: we already called `closeCartSidebar` this click; avoid double-dance when it was open. */
+  sidebarWasOpenBeforeClose?: boolean
+): boolean {
   if (prod.onProductClick?.type !== "openLink") return false;
 
   if (prod.onProductClick.shouldPause) {
@@ -32,7 +37,11 @@ function handleOpenLinkAction(context: any, prod: any): boolean {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 
-  context.triggerCartIconDance();
+  const shouldDance =
+    sidebarWasOpenBeforeClose === undefined || !sidebarWasOpenBeforeClose;
+  if (shouldDance) {
+    context.triggerCartIconDance();
+  }
   return true; // Indicates action was handled
 }
 
@@ -302,14 +311,6 @@ function cleanupOverlayAndControls(context: any): void {
   if (context.controlsContainer) {
     context.controlsContainer.style.display = "";
   }
-}
-
-function closeSidebar(context: any): void {
-  context.cartSidebar.style.width = "0";
-  context.cartSidebar.style.display = "none";
-  context.isCartOpen = false;
-  context.cartButton.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M7 18c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2zm10 0c-1.104 0-2 .896-2 2s.896 2 2 2 2-.896 2-2-.896-2-2-2zM7.334 16h9.332c.822 0 1.542-.502 1.847-1.264l3.479-8.12A1 1 0 0 0 21 5H5.21l-.94-2.342A1 1 0 0 0 3.333 2H1a1 1 0 1 0 0 2h1.333l3.6 8.982-1.35 2.44C3.52 16.14 4.477 18 6 18h12a1 1 0 1 0 0-2H7.334z"/></svg>`;
-  context.triggerCartIconDance();
 }
 
 function playAndClearHotspotAfterDelay(

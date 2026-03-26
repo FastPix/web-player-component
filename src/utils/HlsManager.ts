@@ -1,5 +1,6 @@
-import { Hls } from "hls.js";
+import type { HlsConfig, Hls as HlsInstanceType } from "hls.js";
 
+import { getHlsConstructor, loadHlsFromCdn } from "./loadHlsFromCdn.js";
 import { hideError, showError } from "./ErrorElement.js";
 import { hideLoader, hideMenus, showLoader } from "./DomVisibilityManager.js";
 import {
@@ -11,7 +12,25 @@ import {
 import { documentObject } from "./CustomElements.js";
 import { isChromecastConnected } from "./CastHandler.js";
 
-const configHls: Partial<Hls.HlsConfig> = {
+function HlsApi(): any {
+  return getHlsConstructor();
+}
+
+/** Defer past the next paint so timer callbacks only schedule work (fewer DevTools violations). */
+export function runAfterNextPaint(fn: () => void): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(fn);
+  });
+}
+
+/** Prefetch next fragment for VOD only — helps alt-audio after track change; off for live to avoid extra edge requests. */
+export function startFragPrefetchForStreamType(
+  streamType: string | null | undefined
+): boolean {
+  return streamType === "on-demand";
+}
+
+const configHls: Partial<HlsConfig> = {
   maxMaxBufferLength: 120,
   autoStartLoad: true,
   debug: false,
@@ -41,7 +60,7 @@ const configHls: Partial<Hls.HlsConfig> = {
   },
 };
 
-const hlsInstance: Hls | null = null;
+const hlsInstance: HlsInstanceType | null = null;
 
 async function setupSafariFairPlayDRM(context: any) {
   const fairplayConfig = context.config.drmSystems["com.apple.fps"];
@@ -229,15 +248,41 @@ async function setupSafariFairPlayDRM(context: any) {
   });
 }
 
+/** Remove online/offline handlers from a prior `setupErrorHandling` (avoids duplicate startLoad on reconnect). */
+function teardownHlsWindowNetworkListeners(context: any) {
+  const t = context?.__fpHlsNetworkListenersTeardown;
+  if (typeof t === "function") {
+    try {
+      t();
+    } catch {
+      /* ignore */
+    }
+  }
+  context.__fpHlsNetworkListenersTeardown = undefined;
+}
+
 function setupErrorHandling(context: any, streamType: string | null) {
+  teardownHlsWindowNetworkListeners(context);
+
   let networkErrorLogged = false;
   let isLoadingAllowed = true;
   let fatalFragLoadCheck = false;
 
   const retryHLSLoad = () => {
-    if (navigator.onLine && isLoadingAllowed) {
-      context.hls.startLoad();
+    const h = context?.hls;
+    if (!navigator.onLine || !isLoadingAllowed || !h) return;
+    try {
+      if (typeof h.startLoad === "function") {
+        h.startLoad();
+      }
+    } catch {
+      /* ignore */
     }
+  };
+
+  /** Yield so startLoad is not executed inside setTimeout / online handler stacks (DevTools violations). */
+  const scheduleRetryHLSLoad = () => {
+    requestAnimationFrame(() => retryHLSLoad());
   };
 
   const handleOnline = () => {
@@ -251,12 +296,16 @@ function setupErrorHandling(context: any, streamType: string | null) {
       isLoadingAllowed = true;
       hideError(context);
       networkErrorLogged = false;
-      retryHLSLoad();
+      scheduleRetryHLSLoad();
     }
   };
 
   const handleOffline = () => {
-    console.error("Device is offline. Unable to load content.");
+    if (context?.debugAttribute) {
+      console.warn(
+        "[fastpix-player] Network offline or suspended; playback may pause until connection returns."
+      );
+    }
     if (isChromecastConnected()) return;
     showError(
       context,
@@ -267,7 +316,7 @@ function setupErrorHandling(context: any, streamType: string | null) {
 
   function fatalErrorHandling(context: any, details: any) {
     // Handle specific fatal key system errors
-    if (details === Hls.ErrorDetails.KEY_SYSTEM_SESSION_UPDATE_FAILED) {
+    if (details === HlsApi().ErrorDetails.KEY_SYSTEM_SESSION_UPDATE_FAILED) {
       showError(
         context,
         "A DRM (Digital Rights Management) error occurred. The playback session cannot continue due to a session update failure."
@@ -275,7 +324,7 @@ function setupErrorHandling(context: any, streamType: string | null) {
       return;
     }
 
-    if (details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+    if (details === HlsApi().ErrorDetails.BUFFER_STALLED_ERROR) {
       showLoader(context); // Show loader if buffering stalls
       return;
     }
@@ -288,7 +337,7 @@ function setupErrorHandling(context: any, streamType: string | null) {
       return;
     }
 
-    if (details === Hls.ErrorDetails.FRAG_LOAD_ERROR) {
+    if (details === HlsApi().ErrorDetails.FRAG_LOAD_ERROR) {
       fatalFragLoadCheck = true;
       showError(
         context,
@@ -296,22 +345,22 @@ function setupErrorHandling(context: any, streamType: string | null) {
       );
       context.hls.destroy();
     } else if (
-      details === Hls.ErrorDetails.LEVEL_LOAD_ERROR ||
-      details === Hls.ErrorDetails.LEVEL_EMPTY_ERROR
+      details === HlsApi().ErrorDetails.LEVEL_LOAD_ERROR ||
+      details === HlsApi().ErrorDetails.LEVEL_EMPTY_ERROR
     ) {
       showError(
         context,
         "An Error occurred while loading the stream. Please try refreshing the page."
       );
-    } else if (details === Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT) {
+    } else if (details === HlsApi().ErrorDetails.LEVEL_LOAD_TIMEOUT) {
       context.hls.destroy();
       showError(
         context,
         "An error occurred while loading the stream. Please try refreshing the page."
       );
     } else if (
-      details === Hls.ErrorDetails.AUDIO_TRACK_LOAD_TIMEOUT ||
-      details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR
+      details === HlsApi().ErrorDetails.AUDIO_TRACK_LOAD_TIMEOUT ||
+      details === HlsApi().ErrorDetails.MANIFEST_PARSING_ERROR
     ) {
       showError(
         context,
@@ -340,19 +389,19 @@ function setupErrorHandling(context: any, streamType: string | null) {
 
   function mediaErrorHandlingNonFatal(context: any, fatal: boolean, type: any) {
     // Handle media errors (buffering, stalling, etc.)
-    if (type === Hls.ErrorTypes.MEDIA_ERROR) {
+    if (type === HlsApi().ErrorTypes.MEDIA_ERROR) {
       if (fatal === true) {
         showError(
           context,
           "A problem occurred while buffering media. Playback cannot continue."
         );
       } else {
-        setTimeout(() => retryHLSLoad(), 1000);
+        setTimeout(() => requestAnimationFrame(() => retryHLSLoad()), 1000);
       }
     }
 
     // Handle network errors
-    if (type === Hls.ErrorTypes.NETWORK_ERROR) {
+    if (type === HlsApi().ErrorTypes.NETWORK_ERROR) {
       if (!navigator.onLine && !networkErrorLogged) {
         showError(
           context,
@@ -368,9 +417,13 @@ function setupErrorHandling(context: any, streamType: string | null) {
 
   window.addEventListener("online", handleOnline);
   window.addEventListener("offline", handleOffline);
+  context.__fpHlsNetworkListenersTeardown = () => {
+    window.removeEventListener("online", handleOnline);
+    window.removeEventListener("offline", handleOffline);
+  };
 
   context.hls.on(
-    Hls.Events.ERROR,
+    HlsApi().Events.ERROR,
     (data: { details: any; type?: any; fatal?: any }, event: any) => {
       // Check for fatal errors
       if (event.fatal) {
@@ -415,7 +468,7 @@ function handleLiveStreamErrors(context: any, data: any) {
     if (
       data.response &&
       data.response.code === 404 &&
-      data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR
+      data.details === HlsApi().ErrorDetails.MANIFEST_LOAD_ERROR
     ) {
       showError(context, "No live stream is currently active on this channel.");
     } else if (data.response && data.response.code === 403) {
@@ -449,7 +502,7 @@ function initializeHLS(
   const url = context.enableCacheBusting ? `${src}?t=${Date.now()}` : src;
 
   // Load HLS source using HLS.js
-  if (Hls.isSupported()) {
+  if (HlsApi().isSupported()) {
     if (src && typeof src === "string") {
       context.hls.attachMedia(context.video);
       context.video.loop = !!context.loopAttribute;
@@ -466,13 +519,13 @@ function initializeHLS(
       context.hasAttribute("auto-play") ||
       context.hasAttribute("autoplay-shorts") ||
       context.hasAttribute("loop-next");
-    context.hls.on(Hls.Events.FRAG_LOADED, () => {
+    context.hls.on(HlsApi().Events.FRAG_LOADED, () => {
       if (!autoplayAttrs) hideLoader(context);
     });
 
     setupErrorHandling(context, streamType);
 
-    context.hls.on(Hls.Events.FRAG_BUFFERED, () => {
+    context.hls.on(HlsApi().Events.FRAG_BUFFERED, () => {
       if (!autoplayAttrs) hideLoader(context);
     });
   } else if (context.video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -498,11 +551,11 @@ function initializeHLS(
 }
 
 function hlsListeners(context: any) {
-  context.hls.on(Hls.Events.RECOVERED, () => {
+  context.hls.on(HlsApi().Events.RECOVERED, () => {
     hideError(context);
   });
 
-  context.hls.on(Hls.Events.MANIFEST_PARSED, () => {
+  context.hls.on(HlsApi().Events.MANIFEST_PARSED, () => {
     context.hls.attachMedia(context.video);
   });
 }
@@ -528,7 +581,7 @@ function extractKeyAttributes(line: string) {
 
 function handleHlsQualityAndTrackSetup(context: any) {
   context.hls.on(
-    Hls.Events.MANIFEST_PARSED,
+    HlsApi().Events.MANIFEST_PARSED,
     (_: any, data: { levels: any; audioTracks: any; subtitleTracks: any }) => {
       let levelsRetrieved = data.levels;
       const subtitleTracks = data.subtitleTracks;
@@ -584,7 +637,9 @@ function handleHlsQualityAndTrackSetup(context: any) {
     }
   );
 
-  context.hls.on(Hls.Events.BUFFER_FLUSHED, () => handleBufferFlushed(context));
+  context.hls.on(HlsApi().Events.BUFFER_FLUSHED, () =>
+    handleBufferFlushed(context)
+  );
 }
 
 function setupResolutionUI(context: any, levels: any) {
@@ -830,6 +885,31 @@ function setupAudioTracks(context: any) {
   context.currentAudioTrackId = currentAudioTrackId;
 }
 
+/** Rebuild native audio menu buttons from current `hls.audioTrack` (e.g. after `setAudioTrack`). */
+function rebuildAudioMenuUI(context: any) {
+  if (!context?.audioMenu) return;
+  setupAudioTracks(context);
+  const { audioTracks: formattedAudioTracks } =
+    getFormattedAudioTracks(context);
+  context.audioMenu.innerHTML = "";
+  const audioButtons = (formattedAudioTracks || []).map((t: TrackInfo) =>
+    createAudioButton(context, t.label, t.id, !!t.isCurrent)
+  );
+  context.audioMenu.append(...audioButtons);
+
+  const currentPos = (formattedAudioTracks || []).findIndex(
+    (t: TrackInfo) => t?.isCurrent
+  );
+  if (currentPos >= 0 && audioButtons[currentPos]) {
+    setActiveButton(audioButtons[currentPos], context.audioMenu.children);
+  }
+
+  context.audioMenuButton.style.display =
+    (formattedAudioTracks || []).length > 1
+      ? context.audioMenuButton.classList.add("audioMenuButtonShow")
+      : context.audioMenuButton.classList.remove("audioMenuButtonShow");
+}
+
 function setupAudioTracksUI(context: any, audioTracks: any) {
   // Determine default track:
   // 1. Prefer default-audio-track attribute by NAME (case-insensitive)
@@ -869,38 +949,644 @@ function setupAudioTracksUI(context: any, audioTracks: any) {
       context.hls.audioTrack = defaultIndex;
       // Ensure it's applied after internal state settles
       setTimeout(() => {
-        try {
-          if (context.hls?.audioTrack !== defaultIndex)
-            context.hls.audioTrack = defaultIndex;
-        } catch {}
+        runAfterNextPaint(() => {
+          try {
+            if (context.hls?.audioTrack !== defaultIndex)
+              context.hls.audioTrack = defaultIndex;
+          } catch {}
+        });
       }, 0);
     } catch (error) {
       console.error("Error setting default audio track:", error);
     }
   }
 
-  // Build audio menu from the *deduped* TrackInfo list so duplicates
-  // (same label/name) don't appear multiple times.
-  context.audioMenu.innerHTML = "";
-  const { audioTracks: formattedAudioTracks } =
-    getFormattedAudioTracks(context);
-  const audioButtons = (formattedAudioTracks || []).map((t) =>
-    createAudioButton(context, t.label, t.id, !!t.isCurrent)
-  );
-  context.audioMenu.append(...audioButtons);
+  rebuildAudioMenuUI(context);
+}
 
-  // Ensure active button matches current track
-  const currentPos = (formattedAudioTracks || []).findIndex(
-    (t) => t?.isCurrent
+function fpAudioDebugLog(context: any, ...args: unknown[]) {
+  try {
+    if (context?.debugAttribute) {
+      console.debug("[fastpix-audio]", ...args);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function logAudioSwitchLoaderDisplayTime(
+  context: any,
+  sessionId: number | null,
+  ms: number,
+  reason: string
+) {
+  fpAudioDebugLog(context, "audio-switch loader display time (ms)", {
+    ms,
+    sessionId,
+    reason,
+  });
+}
+
+/** Seconds since `__fpAudioSwitchT0`; only when `debug` is set. */
+function logAudioSwitchElapsedSec(
+  context: any,
+  phase: string,
+  extra?: Record<string, unknown>
+) {
+  const t0 = context?.__fpAudioSwitchT0;
+  if (typeof t0 !== "number") return;
+  const elapsedSec = Math.round((performance.now() - t0) / 10) / 100;
+  fpAudioDebugLog(context, "audio-switch timing (s)", {
+    phase,
+    elapsedSec,
+    ...(extra ?? {}),
+  });
+}
+
+/** One-line summary at end of a switch (debug only). Clears `__fpAudioSwitchMeta`. */
+function logAudioSwitchTotalDurationSummary(
+  context: any,
+  path: "lightweight" | "heavy" | "lightweight-fallback" | "heavy-fallback"
+) {
+  const t0 = context?.__fpAudioSwitchT0;
+  if (typeof t0 !== "number") return;
+  const totalSec = Math.round((performance.now() - t0) / 10) / 100;
+  const meta = context.__fpAudioSwitchMeta as
+    | { from?: number; to?: number }
+    | undefined;
+  fpAudioDebugLog(
+    context,
+    "audio-switch TOTAL duration (request → this point)",
+    {
+      totalSec,
+      path,
+      fromTrackIndex: meta?.from,
+      toTrackIndex: meta?.to,
+    }
   );
-  if (currentPos >= 0 && audioButtons[currentPos]) {
-    setActiveButton(audioButtons[currentPos], context.audioMenu.children);
+  context.__fpAudioSwitchMeta = undefined;
+}
+
+/** Only call `play()` after an audio switch if playback was not paused when the switch was requested. */
+function audioSwitchResumeIfWasPlaying(context: any, vid?: HTMLVideoElement) {
+  const v = vid ?? (context?.video as HTMLVideoElement | undefined);
+  if (!v || context?.__fpAudioSwitchUserHadPaused) return;
+  void v.play().catch(() => {});
+}
+
+/** One loader for the whole audio-switch operation; `showLoader` already no-ops if visible. */
+function beginAudioTrackSwitchLoader(context: any): number {
+  clearTimeout(context.__fpAudioSwitchHideTimer);
+  context.__fpAudioSwitchSession = (context.__fpAudioSwitchSession || 0) + 1;
+  const id = context.__fpAudioSwitchSession;
+  showLoader(context);
+  context.__fpAudioSwitchLoaderShownAt = performance.now();
+  return id;
+}
+
+function scheduleEndAudioTrackSwitchLoader(context: any, sessionId: number) {
+  if (sessionId < 0) return;
+  clearTimeout(context.__fpAudioSwitchHideTimer);
+  context.__fpAudioSwitchHideTimer = setTimeout(() => {
+    runAfterNextPaint(() => {
+      if (context.__fpAudioSwitchSession !== sessionId) return;
+      const t0 = context.__fpAudioSwitchLoaderShownAt;
+      if (typeof t0 === "number") {
+        logAudioSwitchLoaderDisplayTime(
+          context,
+          sessionId,
+          Math.round(performance.now() - t0),
+          "hide-after-switch"
+        );
+        context.__fpAudioSwitchLoaderShownAt = undefined;
+      } else {
+        logAudioSwitchLoaderDisplayTime(
+          context,
+          sessionId,
+          0,
+          "hide-after-switch (no show timestamp)"
+        );
+      }
+      hideLoader(context);
+      logAudioSwitchElapsedSec(
+        context,
+        "switch-complete (heavy: ui-loader-hidden)",
+        {
+          sessionId,
+          note: "elapsed since switch-requested; includes 280ms post-SWITCHED debounce",
+        }
+      );
+      const outcome = context.__fpAudioSwitchOutcomePath ?? "heavy";
+      context.__fpAudioSwitchOutcomePath = undefined;
+      logAudioSwitchTotalDurationSummary(
+        context,
+        outcome === "heavy-fallback" ? "heavy-fallback" : "heavy"
+      );
+      context.__fpAudioSwitchT0 = undefined;
+      context.__fpAudioSwitchUserHadPaused = undefined;
+    });
+  }, 280);
+}
+
+/** Same idea as hls.js internal `useAlternateAudio`: separate audio rendition vs muxed main. */
+function audioTrackIsAlternate(hlsAny: any, trackIndex: number): boolean {
+  try {
+    const tracks = hlsAny?.audioTracks;
+    const t = Array.isArray(tracks) ? tracks[trackIndex] : null;
+    const url = t?.url as string | undefined;
+    if (!url) return false;
+    const levelUri = hlsAny?.loadLevelObj?.uri;
+    return url !== levelUri;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Heavy recovery (blocking loader, hold, directResume/startLoad) is only needed when leaving
+ * separate-audio rendition for muxed-in-video main (hls.js `altToMain`). For alternate↔alternate
+ * (e.g. default URL + Bengali URL), both look “alternate” vs level URI — use lightweight path.
+ */
+function shouldUseLightweightAudioTrackSwitchPath(
+  hlsAny: HlsInstanceType | null | undefined,
+  previousAudioTrackId: number | undefined,
+  expectedAudioTrackId: number
+): boolean {
+  const h = hlsAny as any;
+  if (!h || expectedAudioTrackId < 0) return true;
+  const leavingAlternate =
+    typeof previousAudioTrackId === "number" &&
+    previousAudioTrackId >= 0 &&
+    audioTrackIsAlternate(h, previousAudioTrackId);
+  const altToMain =
+    leavingAlternate && !audioTrackIsAlternate(h, expectedAudioTrackId);
+  return !altToMain;
+}
+
+/**
+ * Single imperceptible seek + play — avoids stacked seeks that make audio “stutter”.
+ * Does not call `hls.startLoad()`.
+ */
+function nudgeVideoElementOnly(context: any): void {
+  const vid = context?.video as HTMLVideoElement | undefined;
+  if (!vid || !Number.isFinite(vid.currentTime) || vid.paused) return;
+  try {
+    const t = vid.currentTime;
+    const d = vid.duration;
+    const bump = t + 0.001;
+    vid.currentTime =
+      Number.isFinite(d) && bump >= d ? Math.max(0, t - 0.001) : bump;
+  } catch {
+    /* ignore */
+  }
+  requestAnimationFrame(() => {
+    void vid.play().catch(() => {});
+  });
+}
+
+const FP_DIRECT_RESUME_THROTTLE_MS = 380;
+
+/**
+ * One `startLoad` at the playhead as soon as hls begins a track change
+ * (`AUDIO_TRACK_SWITCHED` fires only after buffers are ready, often ~0.5–2s later).
+ */
+function kickHlsLoadAtPlayhead(context: any): void {
+  const hlsAny = context?.hls as any;
+  const vid = context?.video as HTMLVideoElement | undefined;
+  if (!hlsAny || !vid || !Number.isFinite(vid.currentTime)) return;
+  try {
+    if (typeof hlsAny.startLoad === "function") {
+      hlsAny.startLoad(vid.currentTime, true);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * `startLoad` restarts network controllers; calling it on every BUFFER_FLUSHED/nudge
+ * delays `AUDIO_TRACK_SWITCHED` and real audio by seconds. Throttle bursts; use
+ * `force` when hls has finished the switch (AUDIO_TRACK_SWITCHED).
+ */
+function directResumePlaybackAfterAudioTrackChange(
+  context: any,
+  force?: boolean
+): void {
+  const hlsAny = context?.hls as any;
+  const vid = context?.video as HTMLVideoElement | undefined;
+  if (!hlsAny || !vid || !Number.isFinite(vid.currentTime)) {
+    fpAudioDebugLog(context, "directResume: skip (no hls/video/time)");
+    return;
   }
 
-  context.audioMenuButton.style.display =
-    (formattedAudioTracks || []).length > 1
-      ? context.audioMenuButton.classList.add("audioMenuButtonShow")
-      : context.audioMenuButton.classList.remove("audioMenuButtonShow");
+  const now = Date.now();
+  const last = context.__fpDirectResumeAt ?? 0;
+  if (!force && now - last < FP_DIRECT_RESUME_THROTTLE_MS) {
+    fpAudioDebugLog(context, "directResume: throttled, video nudge only");
+    nudgeVideoElementOnly(context);
+    return;
+  }
+  context.__fpDirectResumeAt = now;
+
+  const tick = (label: string, withStartLoad: boolean) => {
+    if (!Number.isFinite(vid.currentTime)) return;
+    const ct = vid.currentTime;
+    fpAudioDebugLog(context, `directResume: ${label}`, {
+      t: ct,
+      muted: vid.muted,
+      paused: vid.paused,
+      hlsAudioTrack: hlsAny.audioTrack,
+      force: !!force,
+      withStartLoad,
+    });
+    if (withStartLoad) {
+      try {
+        if (typeof hlsAny.startLoad === "function") {
+          hlsAny.startLoad(ct, true);
+        }
+      } catch (e) {
+        fpAudioDebugLog(context, "directResume: startLoad error", e);
+      }
+    }
+    if (vid.paused) return;
+    try {
+      const d = vid.duration;
+      const bump = ct + 0.001;
+      vid.currentTime =
+        Number.isFinite(d) && bump >= d ? Math.max(0, ct - 0.001) : bump;
+    } catch {
+      /* ignore */
+    }
+    void vid.play().catch(() => {});
+  };
+
+  queueMicrotask(() => tick("1", true));
+  setTimeout(() => runAfterNextPaint(() => tick("2", false)), force ? 90 : 55);
+}
+
+/**
+ * Register before `hls.audioTrack = …`. Nudges after `AUDIO_TRACK_SWITCHED`.
+ * Alternate → muxed main: hls.js often emits SWITCHED only after BUFFER_FLUSHED,
+ * so it can arrive after 1s; we keep listening + BUFFER_FLUSHED nudge + late fallbacks.
+ */
+function nudgePlaybackAfterAudioTrackSwitch(
+  context: any,
+  hls: HlsInstanceType | null | undefined,
+  expectedAudioTrackId: number,
+  previousAudioTrackId?: number
+): void {
+  const vid = context?.video as HTMLVideoElement | undefined;
+  const hlsInstance =
+    hls !== undefined && hls !== null
+      ? hls
+      : (context?.hls as HlsInstanceType | undefined);
+
+  if (
+    !vid ||
+    !Number.isFinite(vid.currentTime) ||
+    !hlsInstance ||
+    typeof (hlsInstance as any).on !== "function" ||
+    typeof (hlsInstance as any).off !== "function" ||
+    expectedAudioTrackId < 0
+  ) {
+    fpAudioDebugLog(
+      context,
+      "nudge: skip register (missing deps or invalid id)"
+    );
+    return;
+  }
+
+  // Any switch away from an alternate rendition can involve buffer flush + delayed SWITCHED.
+  const leavingAlternate =
+    typeof previousAudioTrackId === "number" &&
+    previousAudioTrackId >= 0 &&
+    audioTrackIsAlternate(hlsInstance, previousAudioTrackId);
+  const altToMain =
+    leavingAlternate &&
+    !audioTrackIsAlternate(hlsInstance, expectedAudioTrackId);
+  const lightweightAudioSwitch = !altToMain;
+
+  const runNudgeWave = (reason: string) => {
+    fpAudioDebugLog(context, `nudge wave (${reason})`, {
+      muted: vid.muted,
+      paused: vid.paused,
+    });
+    if (vid.paused) {
+      directResumePlaybackAfterAudioTrackChange(context, true);
+      return;
+    }
+    nudgeVideoElementOnly(context);
+  };
+
+  const prevCleanup = context.__fpAudioTrackSwitchNudgeCleanup as
+    | (() => void)
+    | undefined;
+  if (typeof prevCleanup === "function") {
+    try {
+      prevCleanup();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  context.__fpAudioSwitchUserHadPaused = vid.paused;
+  if (context.__fpAudioSwitchHoldActive) {
+    context.__fpAudioSwitchHoldActive = false;
+    audioSwitchResumeIfWasPlaying(context, vid);
+  }
+
+  const switchUiSession = lightweightAudioSwitch
+    ? -1
+    : beginAudioTrackSwitchLoader(context);
+
+  context.__fpAudioSwitchT0 = performance.now();
+  context.__fpAudioSwitchSwitchingAt = undefined;
+  context.__fpAudioSwitchMeta = {
+    from: previousAudioTrackId,
+    to: expectedAudioTrackId,
+  };
+  fpAudioDebugLog(context, "audio-switch timing (s)", {
+    phase: "switch-requested",
+    elapsedSec: 0,
+    from: previousAudioTrackId,
+    to: expectedAudioTrackId,
+    lightweightAudioSwitch,
+    altToMain,
+  });
+
+  let settled = false;
+  let didSwitchingKick = false;
+  let fallbackMidTimer: ReturnType<typeof setTimeout> | undefined;
+  let fallbackFinalTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const onSwitching = (_: string, data: { id?: number; name?: string }) => {
+    if (settled || didSwitchingKick) return;
+    const evId = data?.id;
+    const hlsAt = hlsInstance.audioTrack;
+    if (evId != expectedAudioTrackId && hlsAt != expectedAudioTrackId) {
+      return;
+    }
+    didSwitchingKick = true;
+    context.__fpAudioSwitchSwitchingAt = performance.now();
+    logAudioSwitchElapsedSec(context, "hls-AUDIO_TRACK_SWITCHING", {
+      id: evId,
+      name: data?.name,
+    });
+    if (lightweightAudioSwitch) {
+      fpAudioDebugLog(
+        context,
+        "AUDIO_TRACK_SWITCHING: lightweight — no early startLoad (hls default)"
+      );
+      return;
+    }
+    fpAudioDebugLog(
+      context,
+      "AUDIO_TRACK_SWITCHING: early startLoad at playhead"
+    );
+    kickHlsLoadAtPlayhead(context);
+  };
+
+  const onAltToMainBufferFlushed = () => {
+    try {
+      hlsInstance.off(HlsApi().Events.BUFFER_FLUSHED, onAltToMainBufferFlushed);
+    } catch {
+      /* ignore */
+    }
+    if (settled) return;
+    if (hlsInstance.audioTrack != expectedAudioTrackId) return;
+    fpAudioDebugLog(context, "BUFFER_FLUSHED after alt→main, nudge");
+    logAudioSwitchElapsedSec(context, "hls-BUFFER_FLUSHED (alt→main only)", {
+      altToMain,
+    });
+    // Hold + loader only when rebuilding muxed-in-main audio after leaving a separate
+    // audio rendition — not for alternate↔alternate (both tracks can look "alternate").
+    if (altToMain && !vid.paused && !context.__fpAudioSwitchHoldActive) {
+      context.__fpAudioSwitchHoldActive = true;
+      context.__fpAudioSwitchHoldTime = vid.currentTime;
+      fpAudioDebugLog(
+        context,
+        "hold: pause playhead while main audio buffer rebuilds (avoids silent skip)"
+      );
+      showLoader(context);
+      vid.pause();
+    }
+    runNudgeWave("buffer-flushed");
+    queueMicrotask(() => {
+      kickHlsLoadAtPlayhead(context);
+      directResumePlaybackAfterAudioTrackChange(context, true);
+    });
+  };
+
+  const cleanup = () => {
+    if (settled) return;
+    settled = true;
+    context.__fpAudioSwitchSwitchingAt = undefined;
+    try {
+      hlsInstance.off(HlsApi().Events.AUDIO_TRACK_SWITCHING, onSwitching);
+    } catch {
+      /* ignore */
+    }
+    try {
+      hlsInstance.off(HlsApi().Events.AUDIO_TRACK_SWITCHED, onSwitched);
+    } catch {
+      /* ignore */
+    }
+    try {
+      hlsInstance.off(HlsApi().Events.BUFFER_FLUSHED, onAltToMainBufferFlushed);
+    } catch {
+      /* ignore */
+    }
+    if (fallbackMidTimer !== undefined) {
+      clearTimeout(fallbackMidTimer);
+    }
+    if (fallbackFinalTimer !== undefined) {
+      clearTimeout(fallbackFinalTimer);
+    }
+    if (context.__fpAudioTrackSwitchNudgeCleanup === cleanupRef) {
+      context.__fpAudioTrackSwitchNudgeCleanup = undefined;
+    }
+  };
+
+  const cleanupRef = () => {
+    cleanup();
+  };
+
+  const onSwitched = (_: string, data: { id?: number; name?: string }) => {
+    const evId = data?.id;
+    const hlsAt = hlsInstance.audioTrack;
+    if (evId != expectedAudioTrackId && hlsAt != expectedAudioTrackId) {
+      fpAudioDebugLog(context, "AUDIO_TRACK_SWITCHED ignored", {
+        evId,
+        hlsAt,
+        expected: expectedAudioTrackId,
+        name: data?.name,
+      });
+      return;
+    }
+    fpAudioDebugLog(context, "AUDIO_TRACK_SWITCHED matched", {
+      evId,
+      hlsAt,
+      expected: expectedAudioTrackId,
+      muted: vid.muted,
+    });
+    logAudioSwitchElapsedSec(context, "hls-AUDIO_TRACK_SWITCHED", {
+      id: evId,
+      name: data?.name,
+    });
+    const tSwitching = context.__fpAudioSwitchSwitchingAt as number | undefined;
+    if (typeof tSwitching === "number") {
+      const engineWindowSec =
+        Math.round((performance.now() - tSwitching) / 10) / 100;
+      fpAudioDebugLog(
+        context,
+        "audio-switch HLS window (SWITCHING→SWITCHED, mux-equivalent)",
+        {
+          engineWindowSec,
+          id: evId,
+          name: data?.name,
+        }
+      );
+    }
+    cleanup();
+    rebuildAudioMenuUI(context);
+    if (context.__fpAudioSwitchHoldActive) {
+      context.__fpAudioSwitchHoldActive = false;
+      const holdT = context.__fpAudioSwitchHoldTime;
+      if (typeof holdT === "number" && Number.isFinite(holdT)) {
+        try {
+          vid.currentTime = holdT;
+        } catch {
+          /* ignore */
+        }
+      }
+      fpAudioDebugLog(context, "hold: resume after audio track ready");
+    }
+    if (lightweightAudioSwitch) {
+      fpAudioDebugLog(
+        context,
+        "AUDIO_TRACK_SWITCHED: lightweight path (no loader / no directResume)"
+      );
+      logAudioSwitchLoaderDisplayTime(
+        context,
+        null,
+        0,
+        "lightweight-no-loader"
+      );
+      logAudioSwitchElapsedSec(context, "switch-complete (lightweight total)", {
+        note: "no blocking loader",
+      });
+      logAudioSwitchTotalDurationSummary(context, "lightweight");
+      context.__fpAudioSwitchT0 = undefined;
+      queueMicrotask(() => {
+        audioSwitchResumeIfWasPlaying(context, vid);
+        context.__fpAudioSwitchUserHadPaused = undefined;
+      });
+      return;
+    }
+    runNudgeWave("switched");
+    queueMicrotask(() => {
+      context.__fpAudioSwitchOutcomePath = "heavy";
+      directResumePlaybackAfterAudioTrackChange(context, true);
+      scheduleEndAudioTrackSwitchLoader(context, switchUiSession);
+      audioSwitchResumeIfWasPlaying(context, vid);
+      context.__fpAudioSwitchUserHadPaused = undefined;
+    });
+  };
+
+  hlsInstance.on(HlsApi().Events.AUDIO_TRACK_SWITCHING, onSwitching);
+  hlsInstance.on(HlsApi().Events.AUDIO_TRACK_SWITCHED, onSwitched);
+  context.__fpAudioTrackSwitchNudgeCleanup = cleanupRef;
+
+  fpAudioDebugLog(context, "listening for AUDIO_TRACK_SWITCHING / SWITCHED", {
+    expected: expectedAudioTrackId,
+    previous: previousAudioTrackId,
+    altToMain,
+    lightweightAudioSwitch,
+    muted: vid.muted,
+    paused: vid.paused,
+  });
+
+  if (altToMain) {
+    hlsInstance.on(HlsApi().Events.BUFFER_FLUSHED, onAltToMainBufferFlushed);
+  }
+
+  if (!lightweightAudioSwitch) {
+    // Mid fallback: nudge but keep listening — SWITCHED can arrive >1s after alt→main.
+    fallbackMidTimer = setTimeout(() => {
+      runAfterNextPaint(() => {
+        if (settled) return;
+        if (hlsInstance.audioTrack == expectedAudioTrackId) {
+          fpAudioDebugLog(
+            context,
+            "nudge mid-fallback @650ms (still listening for SWITCHED)"
+          );
+          runNudgeWave("fallback-mid");
+        }
+      });
+    }, 650);
+  }
+
+  fallbackFinalTimer = setTimeout(
+    () => {
+      runAfterNextPaint(() => {
+        if (settled) return;
+        const ok = hlsInstance.audioTrack == expectedAudioTrackId;
+        fpAudioDebugLog(
+          context,
+          lightweightAudioSwitch
+            ? "lightweight audio switch final cleanup @3s"
+            : "nudge final-fallback @4s (stop listening)",
+          { ok }
+        );
+        cleanup();
+        rebuildAudioMenuUI(context);
+        if (context.__fpAudioSwitchHoldActive) {
+          context.__fpAudioSwitchHoldActive = false;
+          const holdT = context.__fpAudioSwitchHoldTime;
+          if (typeof holdT === "number" && Number.isFinite(holdT)) {
+            try {
+              vid.currentTime = holdT;
+            } catch {
+              /* ignore */
+            }
+          }
+          fpAudioDebugLog(context, "hold: resume (final fallback)");
+        }
+        if (lightweightAudioSwitch) {
+          logAudioSwitchLoaderDisplayTime(
+            context,
+            null,
+            0,
+            "lightweight-fallback-timer-no-loader"
+          );
+          logAudioSwitchElapsedSec(
+            context,
+            "fallback-3s (!SWITCHED) lightweight",
+            { ok }
+          );
+          logAudioSwitchTotalDurationSummary(context, "lightweight-fallback");
+          context.__fpAudioSwitchT0 = undefined;
+          audioSwitchResumeIfWasPlaying(context, vid);
+          context.__fpAudioSwitchUserHadPaused = undefined;
+          return;
+        }
+        logAudioSwitchElapsedSec(
+          context,
+          "fallback-4s (!SWITCHED yet) heavy path → schedule loader hide",
+          { ok }
+        );
+        if (ok) {
+          runNudgeWave("fallback-final");
+        }
+        directResumePlaybackAfterAudioTrackChange(context, true);
+        context.__fpAudioSwitchOutcomePath = "heavy-fallback";
+        scheduleEndAudioTrackSwitchLoader(context, switchUiSession);
+        audioSwitchResumeIfWasPlaying(context, vid);
+        context.__fpAudioSwitchUserHadPaused = undefined;
+      });
+    },
+    lightweightAudioSwitch ? 3000 : 4000
+  );
 }
 
 function emitAudioChange(context: any) {
@@ -945,7 +1631,43 @@ function createAudioButton(
   }
 
   button.addEventListener("click", (event) => {
-    context.hls.audioTrack = index;
+    const resolvedIndex = index;
+    fpAudioDebugLog(context, "audio UI: switch request", {
+      to: resolvedIndex,
+      from: context.hls?.audioTrack,
+      muted: context.video?.muted,
+      paused: context.video?.paused,
+    });
+    const previousAudioTrackId =
+      typeof context.hls?.audioTrack === "number" ? context.hls.audioTrack : -1;
+    nudgePlaybackAfterAudioTrackSwitch(
+      context,
+      context.hls,
+      resolvedIndex,
+      previousAudioTrackId
+    );
+    context.hls.audioTrack = resolvedIndex;
+    if (
+      !shouldUseLightweightAudioTrackSwitchPath(
+        context.hls,
+        previousAudioTrackId,
+        resolvedIndex
+      )
+    ) {
+      directResumePlaybackAfterAudioTrackChange(context, true);
+    }
+    setTimeout(() => {
+      runAfterNextPaint(() => {
+        try {
+          if (context.hls?.audioTrack !== resolvedIndex) {
+            fpAudioDebugLog(context, "audio UI: re-apply track index");
+            context.hls.audioTrack = resolvedIndex;
+          }
+        } catch {
+          /* ignore */
+        }
+      });
+    }, 0);
     setActiveButton(button, context.audioMenu.children);
     toggleAudioMenu(context);
     // Emit so external UIs always receive the current track snapshot
@@ -985,26 +1707,38 @@ function setupResolutionMenuButton(context: any) {
 }
 
 function handleBufferFlushed(context: any) {
-  if (!context.isBufferFlushed && context.initialPlayClick) {
-    // Optional: force seeking to prevent desync
-    const currentTime = context.video.currentTime;
-    context.video.currentTime = currentTime + 0.001; // Small offset for accuracy
+  // Only for resolution / quality changes. Audio (and other) track switches also flush
+  // buffers; running seek+play here races with our audio-switch logic and logs AbortError.
+  if (!context.resolutionSwitching) return;
+  if (!context.initialPlayClick) return;
+  if (context.isBufferFlushed) {
+    context.resolutionSwitching = false;
+    return;
+  }
+  // Optional: force seeking to prevent desync
+  const currentTime = context.video.currentTime;
+  context.video.currentTime = currentTime + 0.001; // Small offset for accuracy
 
-    if (!context.wasPausedBeforeSwitch) {
-      context.video
-        .play()
-        .then(() => {
-          context.isBufferFlushed = true;
-          hideLoader(context);
-          context.resolutionSwitching = false;
-        })
-        .catch((error: any) => {
+  if (!context.wasPausedBeforeSwitch) {
+    context.video
+      .play()
+      .then(() => {
+        context.isBufferFlushed = true;
+        hideLoader(context);
+        context.resolutionSwitching = false;
+      })
+      .catch((error: any) => {
+        const name = error?.name ?? "";
+        if (name !== "AbortError") {
           console.error("Playback error:", error);
-          hideLoader(context);
-        });
-    } else {
-      hideLoader(context);
-    }
+        }
+        hideLoader(context);
+        context.isBufferFlushed = true;
+        context.resolutionSwitching = false;
+      });
+  } else {
+    hideLoader(context);
+    context.resolutionSwitching = false;
   }
 }
 
@@ -1015,15 +1749,36 @@ function setActiveButton(activeButton: any, buttons: any) {
   activeButton.classList.add("active");
 }
 
+/** Creates `context.hls`, wires core listeners; safe to call multiple times. */
+export async function ensureHlsRuntime(context: any): Promise<void> {
+  await loadHlsFromCdn();
+  if (context.hls) return;
+  const H = getHlsConstructor();
+  context.config = {
+    ...context.config,
+    startFragPrefetch: startFragPrefetchForStreamType(context.streamType),
+  };
+  context.hls = new H(context.config);
+  hlsListeners(context);
+  handleHlsQualityAndTrackSetup(context);
+}
+
 export {
   hlsInstance,
-  Hls,
   initializeHLS,
   hlsListeners,
   handleHlsQualityAndTrackSetup,
   configHls,
   getFormattedAudioTracks,
   getFormattedSubtitleTracks,
+  nudgePlaybackAfterAudioTrackSwitch,
+  nudgeVideoElementOnly,
+  directResumePlaybackAfterAudioTrackChange,
+  shouldUseLightweightAudioTrackSwitchPath,
+  teardownHlsWindowNetworkListeners,
+  rebuildAudioMenuUI,
+  getHlsConstructor,
+  loadHlsFromCdn,
 };
 
 export type { TrackInfo };

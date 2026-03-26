@@ -55,6 +55,9 @@ video {
     overflow: hidden;
     background-color: #000; /* Fallback color */
     border-radius: var(--player-border-radius);
+    /* WebKit: video composits in its own layer and can paint above later siblings unless z-order is explicit */
+    position: relative;
+    z-index: 0;
 }
 
 google-cast-launcher {
@@ -71,6 +74,7 @@ google-cast-launcher {
     left: 0;
     width: 100%;
     height: 100%;
+    z-index: 1;
     pointer-events: none; /* Allow clicks to pass through the overlay to the video */
 }
 
@@ -187,7 +191,22 @@ video::-webkit-media-text-track-display {
 }
 
 .controlsContainer {
-    display: var(--controls, flex)
+    display: var(--controls, flex);
+    /* Stack above WebKit video layer; fill parent so absolute children align to the player */
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    /* Full-cover layer would steal taps from <video>; pass through except on real controls */
+    pointer-events: none;
+}
+
+.controlsContainer * {
+    pointer-events: auto;
+}
+
+/* Inert flex row — must not block tap-to-toggle on the video */
+.controlsContainer .bottomCenterDiv {
+    pointer-events: none;
 }
 
 .volumeiOSButton {
@@ -1179,7 +1198,7 @@ width: 30px;
 }
 
 #timeControlButtonIncrease {
-    background-color: transparent
+    background-color: transparent;
     border: gray;
     cursor: pointer;
     outline: none;
@@ -1197,7 +1216,7 @@ width: 30px;
 }
 
 #timeControlButtonDecrease {
-    background-color: transparent
+    background-color: transparent;
     border: gray;
     cursor: pointer;
     outline: none;
@@ -1244,7 +1263,8 @@ width: 30px;
 .leftControls.mobile {
     display: none;
     position: absolute;
-    left: 10px;"load    bottom: 3px;
+    left: 10px;
+    bottom: 3px;
     flex-direction: row;
     align-items: center;
     z-index: 4;
@@ -1385,11 +1405,10 @@ display: none;
 .parentVolumeDiv svg,
 .playbackRateButtonInitial svg,
 .ccButton svg,
-pipButton svg,
-fullScreenButton svg,
-volumeiOSButton svg,
+.pipButton svg,
+.fullScreenButton svg,
+.volumeiOSButton svg,
 .playlistNextButton svg,
-playbackRateButtonInitial,
 .playlistButton svg,
 .timeDisplay {
     color: var(--primary-color);

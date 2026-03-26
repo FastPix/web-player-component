@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Track Switching Demo</title>
    
-    <script src="https://cdn.jsdelivr.net/npm/@fastpix/fp-player@latest" defer></script>
+    <script defer src="../dist/player.js"></script> 
+    <!-- <script src="https://cdn.jsdelivr.net/npm/@fastpix/fp-player@latest" defer></script> -->
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -81,23 +82,42 @@
     
     <div class="player-container">
         <fastpix-player 
-            playback-id="your-playback-id-with-tracks" 
-            loop 
-            auto-play 
-            muted
+            playback-id="your-playback-id"
+            
             preload="auto"
-            default-audio-track="French"
+            muted
             default-subtitle-track="English"
+            default-audio-track="Bengali"
+            metadata-workspace-key="your-workspace-key"
+            metadata-video-title="Audio Track Switching Demo"
+            metadata-video-id="video-id"
+            metadata-viewer-user-id="1234567890"
+            metadata-video-duration="100"
+            metadata-video-stream-type="live"
+            metadata-video-content-type="video"
+            metadata-video-drm-type="none"
+            metadata-video-encoding-variant="none"
+            metadata-video-language-code="en"
+            metadata-video-producer="FastPix"
+            metadata-video-variant-name="English"
+            metadata-video-variant-id="video`"
+            metadata-video-series="Audio Track Switching Demo"
+            metadata-video-poster-url=""
+            metadata-video-source-height="1080"
+            metadata-video-source-width="1920"
+            metadata-video-cdn="fastpix.io">
             hide-native-subtitles
+            enable-cache-busting
             >
         </fastpix-player>
-        <div class="custom-subtitle" data-role="custom-subtitle"></div>
+        <!-- One overlay per container; extras are removed at runtime if duplicated. -->
+        <div id="demo-custom-subtitle" class="custom-subtitle" data-role="custom-subtitle"></div>
     </div>
 
     <div class="player-time">
         
-        <button id="forwardButton">Forward 20s</button>
-        <button id="backwardButton">Backward 20s</button>
+        <button id="forwardButton">Forward</button>
+        <button id="backwardButton">Backward</button>https://fastpix.io/images/poster.jpg
         
     </div>
 
@@ -135,10 +155,42 @@
             player.seekBackward(10);
         });
         
+        /** Keeps a single custom subtitle overlay per player container (avoids stacked duplicates). */
+        function dedupeCustomSubtitleOverlays(container) {
+            if (!container) return;
+            const nodes = Array.from(
+                container.querySelectorAll('[data-role="custom-subtitle"]')
+            );
+            if (nodes.length <= 1) return;
+            const keep =
+                nodes.find((n) => n.id === 'demo-custom-subtitle') || nodes[0];
+            for (const n of nodes) {
+                if (n !== keep) n.remove();
+            }
+        }
+
         function getCustomSubtitleDiv(forPlayer) {
             const container = forPlayer.closest('.player-container');
-            return container ? container.querySelector('[data-role="custom-subtitle"]') : null;
+            if (!container) return null;
+            dedupeCustomSubtitleOverlays(container);
+            const byId = container.querySelector('#demo-custom-subtitle');
+            if (byId) return byId;
+            return container.querySelector('[data-role="custom-subtitle"]');
         }
+
+        function clearCustomSubtitleOverlay(forPlayer) {
+            const el = getCustomSubtitleDiv(forPlayer);
+            if (el) {
+                el.textContent = '';
+                el.style.display = 'none';
+            }
+        }
+
+        if (player) {
+            const root = player.closest('.player-container');
+            if (root) dedupeCustomSubtitleOverlays(root);
+        }
+
         let subtitlePollId = null;
 
         // Wait for tracks to be ready
@@ -161,25 +213,24 @@
             const startTime = Date.now();
             subtitlePollId = setInterval(() => {
                 const subtitleTracks = player.getSubtitleTracks();
-                console.log("Polled subtitle tracks:", subtitleTracks);
                 if (subtitleTracks && subtitleTracks.length > 0) {
                     clearInterval(subtitlePollId);
                     subtitlePollId = null;
-                    // Render and highlight whichever subtitle track is currently "showing"
-                    // so that the actively playing subtitle is highlighted by default.
+                    console.log("Polled subtitle tracks:", subtitleTracks);
                     renderSubtitleButtons(subtitleTracks);
-                } else if (Date.now() - startTime > 10000) { // safety timeout 10s
+                } else if (Date.now() - startTime > 10000) {
                     clearInterval(subtitlePollId);
                     subtitlePollId = null;
                 }
-            }, 500);
+            }, 1000);
         });
 
         // Custom subtitle overlay: attach to ALL players so each renders separately.
         document.querySelectorAll('fastpix-player').forEach((p) => {
             p.addEventListener('fastpixsubtitlecue', (e) => {
                 const { text, language, startTime, endTime } = /** @type {CustomEvent} */ (e).detail;
-                console.log('Current subtitle cue:', text, language, startTime, endTime);
+                // Uncomment for cue-by-cue debugging (logging every cue can add main-thread cost).
+                // console.log('Current subtitle cue:', text, language, startTime, endTime);
 
                 // Only show cues when a subtitle track is actually enabled (not Off).
                 const subtitleTracks = p.getSubtitleTracks();
@@ -206,12 +257,32 @@
             renderAudioButtons(tracks || player.getAudioTracks());
         });
 
-        // Listen for subtitle track changes
+        // Listen for subtitle track changes (built-in menu, setSubtitleTrack, disableSubtitles, demo buttons)
         player.addEventListener('fastpixsubtitlechange', (e) => {
+            const targetPlayer = /** @type {HTMLElement} */ (e.currentTarget);
             const { tracks, currentTrack } = /** @type {CustomEvent} */ (e).detail || {};
-            const resolvedCurrent = currentTrack || (Array.isArray(tracks) ? tracks.find(t => t.isCurrent) : null);
-            console.log("Subtitle changed. Current track:", resolvedCurrent);
-            renderSubtitleButtons(tracks || player.getSubtitleTracks());
+            const list =
+                Array.isArray(tracks) && tracks.length > 0
+                    ? tracks
+                    : targetPlayer.getSubtitleTracks();
+            // When Off, nothing is isCurrent — find() is undefined; detail.currentTrack may be absent.
+            const fromList = list.find((t) => t.isCurrent);
+            const resolvedCurrent =
+                currentTrack !== undefined && currentTrack !== null
+                    ? currentTrack
+                    : fromList !== undefined
+                      ? fromList
+                      : null;
+            console.log(
+                'Subtitle changed. Current track:',
+                resolvedCurrent === null ? 'Off' : resolvedCurrent
+            );
+            const anySubtitleOn =
+                Array.isArray(list) && list.some((t) => t.isCurrent);
+            if (!anySubtitleOn) {
+                clearCustomSubtitleOverlay(targetPlayer);
+            }
+            renderSubtitleButtons(list);
         });
 
         function renderAudioButtons(tracks) {
@@ -249,24 +320,11 @@
             offBtn.className = 'track-btn' + (!tracks.some(t => t.isCurrent) ? ' active' : '');
             offBtn.textContent = 'Off';
             offBtn.onclick = () => {
-                console.log('Turning subtitles off');
-                // Prefer the new public API if available
-                if (typeof player.disableSubtitles === 'function') {
-                    player.disableSubtitles();
-                    console.log('Subtitles disabled');
-                } else {
-                    // Fallback for older builds
-                    player.setSubtitleTrack(null);
-                    console.log('Subtitles disabled (fallback)');
-                }
-                // Also immediately clear any currently displayed custom subtitle text
-                const customSubtitleDiv = getCustomSubtitleDiv(player);
-                if (customSubtitleDiv) {
-                    customSubtitleDiv.textContent = '';
-                    customSubtitleDiv.style.display = 'none';
-                }
-                // Update status text
-                currentSubtitleDisplay.textContent = 'Current: Off';
+                // Public API: null turns subtitles off (dispatches fastpixsubtitlechange).
+                // Equivalent built-in behavior: player.disableSubtitles().
+                console.log('Turning subtitles off: setSubtitleTrack(null)');
+                player.setSubtitleTrack(null);
+                clearCustomSubtitleOverlay(player);
             };
             subtitleButtonsContainer.appendChild(offBtn);
 

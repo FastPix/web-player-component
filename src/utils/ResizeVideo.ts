@@ -1,6 +1,11 @@
 import { VolumeHighIcon, VolumeMutedIcon } from "../icons/VolumeIcon/index";
 import { isChromecastConnected } from "./CastHandler";
 
+/** Live streams never show current/duration; avoid re-showing on resize/sidebar. */
+function timeDisplayVisibleDisplay(context: any): "" | "none" {
+  return context.streamType === "live-stream" ? "none" : "";
+}
+
 // Helper function to safely remove child element
 function removeChildIfExists(parent: any, child: any) {
   if (parent && child && parent.contains(child)) {
@@ -480,6 +485,7 @@ function tabletDevice(
   context.forwardRewindControlsWrapper.style.opacity = "1";
   context.leftControls.appendChild(context.timeDisplay);
   context.timeDisplay.style.opacity = "1";
+  context.timeDisplay.style.display = timeDisplayVisibleDisplay(context);
 
   //  Forward & Rewind buttons
   context.forwardRewindControlsWrapper.appendChild(context.rewindBackButton);
@@ -572,6 +578,7 @@ function portraitMode(
   context.forwardRewindControlsWrapper.style.opacity = "1";
   context.leftControls.appendChild(context.timeDisplay);
   context.timeDisplay.style.opacity = "1";
+  context.timeDisplay.style.display = timeDisplayVisibleDisplay(context);
 
   if (context.controlsContainer.classList.contains("hasPlaylist")) {
     context.leftControls.appendChild(context.prevButton);
@@ -711,6 +718,7 @@ function setupLargeDeviceLayout(
   context.forwardRewindControlsWrapper.style.opacity = "1";
   context.leftControls.appendChild(context.timeDisplay);
   context.timeDisplay.style.opacity = "1";
+  context.timeDisplay.style.display = timeDisplayVisibleDisplay(context);
 
   // Setup playlist controls if needed
   if (context.controlsContainer.classList.contains("hasPlaylist")) {
@@ -782,7 +790,8 @@ function handleMediumWidthSidebar(
     if (timeDisplay) timeDisplay.style.display = "none";
     if (volumeControl) volumeControl.style.display = "none";
   } else {
-    if (timeDisplay) timeDisplay.style.display = "";
+    if (timeDisplay)
+      timeDisplay.style.display = timeDisplayVisibleDisplay(context);
     if (volumeControl) volumeControl.style.display = "";
   }
 }
@@ -802,7 +811,8 @@ function handleSpecificRangeSidebar(
     if (timeDisplay) timeDisplay.style.display = "none";
     if (volumeControl) volumeControl.style.display = "none";
   } else {
-    if (timeDisplay) timeDisplay.style.display = "";
+    if (timeDisplay)
+      timeDisplay.style.display = timeDisplayVisibleDisplay(context);
     if (volumeControl) volumeControl.style.display = "";
   }
 }
@@ -903,7 +913,8 @@ function handleNonMediumWidthSidebar(context: any, videoWidth: number) {
   if (videoWidth >= 600 && videoWidth <= 800) return;
   if (videoWidth >= 488 && videoWidth <= 615) return; // Exclude specific range
 
-  if (context.timeDisplay) context.timeDisplay.style.display = "";
+  if (context.timeDisplay)
+    context.timeDisplay.style.display = timeDisplayVisibleDisplay(context);
   if (context.volumeControl) context.volumeControl.style.display = "";
 }
 

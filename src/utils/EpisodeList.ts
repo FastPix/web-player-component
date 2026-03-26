@@ -3,9 +3,11 @@ import { hideLoader, showLoader } from "./DomVisibilityManager";
 import { showError } from "./ErrorElement";
 import {
   configHls,
+  getHlsConstructor,
   handleHlsQualityAndTrackSetup,
-  Hls,
   hlsListeners,
+  loadHlsFromCdn,
+  startFragPrefetchForStreamType,
 } from "./HlsManager";
 import { formatVideoDuration, getSRC, setStreamUrl } from "./index";
 import { toggleEpisodeList } from "./ToggleController";
@@ -137,10 +139,16 @@ async function changePlaybackId(newPlaybackId: string, context: any) {
     context.video.pause();
     showLoader(context);
 
+    await loadHlsFromCdn();
+
     // destory player
     if (context.hls) {
       context.hls.destroy();
-      context.hls = new Hls(configHls);
+      const HlsCtor = getHlsConstructor() as new (c?: unknown) => any;
+      context.hls = new HlsCtor({
+        ...configHls,
+        startFragPrefetch: startFragPrefetchForStreamType(context.streamType),
+      });
     }
 
     // clearing source video

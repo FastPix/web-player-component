@@ -11,12 +11,12 @@ interface VideoPlayerContext {
 }
 
 function WindowEvents(context: VideoPlayerContext) {
-  window.addEventListener("resize", () => {
+  let resizeDebounce: ReturnType<typeof setTimeout> | undefined;
+  const runResizeLayout = () => {
     resizeVideoWidth(context);
     if (context.video.readyState >= 1) {
       updateChapterMarkers(context);
     } else {
-      // Wait for metadata to be loaded before updating markers
       context.video.addEventListener(
         "loadedmetadata",
         () => updateChapterMarkers(context),
@@ -27,12 +27,24 @@ function WindowEvents(context: VideoPlayerContext) {
     if (context.video.offsetWidth >= 471 && context.initialPlayClick) {
       context.playPauseButton.style.position = "absolute";
     }
+  };
+
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeDebounce);
+    resizeDebounce = setTimeout(() => {
+      resizeDebounce = undefined;
+      // Defer heavy layout (resizeVideoWidth) so DevTools does not attribute it
+      // to the setTimeout handler (>~50ms triggers [Violation]).
+      requestAnimationFrame(runResizeLayout);
+    }, 120);
   });
 
   window.addEventListener("load", () => {
-    resizeVideoWidth(context);
-    updateChapterMarkers(context);
-    resumePlaybackOnLoadOnActiveSession(context);
+    requestAnimationFrame(() => {
+      resizeVideoWidth(context);
+      updateChapterMarkers(context);
+      resumePlaybackOnLoadOnActiveSession(context);
+    });
   });
 
   window.addEventListener("DOMContentLoaded", () => {

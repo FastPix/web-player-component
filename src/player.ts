@@ -30,13 +30,21 @@ import {
   hideDefaultSubtitlesStyles,
   disableAllSubtitles,
 } from "./utils/SubtitleHandler";
+import type { Hls as HlsInstance } from "hls.js";
 import {
   configHls,
-  handleHlsQualityAndTrackSetup,
-  Hls,
+  directResumePlaybackAfterAudioTrackChange,
+  ensureHlsRuntime,
+  getHlsConstructor,
   hlsListeners,
   getFormattedAudioTracks,
   getFormattedSubtitleTracks,
+  nudgePlaybackAfterAudioTrackSwitch,
+  shouldUseLightweightAudioTrackSwitchPath,
+  teardownHlsWindowNetworkListeners,
+  rebuildAudioMenuUI,
+  runAfterNextPaint,
+  startFragPrefetchForStreamType,
 } from "./utils/HlsManager";
 import {
   configureForiOS,
@@ -180,7 +188,7 @@ function loadCurrentPlaylistItemAndRender(self: any): void {
 class FastPixPlayer extends windowObject.HTMLElement {
   [x: string]: any;
   _readyState: number;
-  hls: Hls | null;
+  hls: HlsInstance | null;
   video: HTMLVideoElement;
   resolutionFlagPause: boolean;
   isLoading: boolean;
@@ -330,7 +338,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
     this._readyState = 0;
     this.config = configHls;
-    this.hls = new Hls(this.config);
+    this.hls = null;
     this.video = documentObject.createElement("video");
     this.resolutionFlagPause = false;
     this.isLoading = false;
@@ -365,7 +373,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.showPostPlayOverlay = Boolean(
       this.cartData.productSidebarConfig?.showPostPlayOverlay ?? false
     );
-    hlsListeners(this);
     this.wrapper = documentObject.createElement("div");
     this.wrapper.style.position = "relative";
     this.controlsContainer = documentObject.createElement("div");
@@ -529,7 +536,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
     );
 
     this.wasPausedBeforeSwitch = false;
-    handleHlsQualityAndTrackSetup(this);
     this.audioMenuButton = documentObject.createElement("button");
     this.audioMenuButton.innerHTML = AudioIcon;
     this.audioMenuButton.className = "audioMenuButton";
@@ -1491,6 +1497,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
   // Lightweight teardown before switching sources (keeps element alive)
   destroy(): void {
     try {
+      teardownHlsWindowNetworkListeners(this);
+
       // Close menus/UI to prevent overlap
       try {
         hideMenus(this);
@@ -1522,7 +1530,12 @@ class FastPixPlayer extends windowObject.HTMLElement {
         if (this.video.fp) {
           this.video.fp.destroy();
         }
-        this.hls = new Hls(this.config);
+        const HlsCtor = getHlsConstructor() as new (c?: unknown) => HlsInstance;
+        this.config = {
+          ...this.config,
+          startFragPrefetch: startFragPrefetchForStreamType(this.streamType),
+        };
+        this.hls = new HlsCtor(this.config);
         hlsListeners(this);
       } catch {}
     } catch {}
@@ -1536,10 +1549,11 @@ class FastPixPlayer extends windowObject.HTMLElement {
     adjustCurrentTimeBy(this, -seconds);
   }
 
-  connectedCallback() {
+  async connectedCallback() {
     const customDomain = this.getAttribute("custom-domain");
 
     receiveAttributes(this);
+    await ensureHlsRuntime(this);
 
     if (
       this.hasAttribute("auto-play") ||
@@ -1629,7 +1643,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
     });
 
     videoListeners(this);
-    hlsListeners(this);
     updateTimeDisplay(this);
     WindowEvents(this);
     configureForiOS(this);
@@ -1880,7 +1893,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.controlsContainer.appendChild(this.parentLiveTitleContainer);
 
     // data
-    initializeAnalytics(this, this.video, this.hls, Hls);
+    initializeAnalytics(this, this.video, this.hls, getHlsConstructor());
 
     this.video.loop = !!this.loopAttribute;
 
@@ -1939,13 +1952,14 @@ class FastPixPlayer extends windowObject.HTMLElement {
       // Ensure cart button is visible for shoppable-shorts
       if (theme === "shoppable-shorts") {
         setTimeout(() => {
-          this.ensureShoppableShortsCartButton();
+          requestAnimationFrame(() => this.ensureShoppableShortsCartButton());
         }, 100);
       }
     }
   }
 
   disconnectedCallback() {
+    teardownHlsWindowNetworkListeners(this);
     this.hls?.destroy();
     if (this.video.fp) {
       this.video.fp.destroy();
@@ -2012,6 +2026,9 @@ class FastPixPlayer extends windowObject.HTMLElement {
   };
 
   closeCartSidebar = () => {
+    const wasOpen = this.isCartOpen;
+    if (!this.cartSidebar) return;
+
     this.cartSidebar.style.width = "0";
     this.cartSidebar.style.display = "none";
     this.isCartOpen = false;
@@ -2028,6 +2045,10 @@ class FastPixPlayer extends windowObject.HTMLElement {
       new CustomEvent("productBarMin", { detail: { opened: false } })
     );
     resizeVideoWidth(this); // restore time/volume
+
+    if (wasOpen) {
+      this.triggerCartIconDance();
+    }
   };
 
   // Debug method to force show cart button
@@ -2050,6 +2071,20 @@ class FastPixPlayer extends windowObject.HTMLElement {
       this.cartButton.style.top = "16px";
       this.cartButton.style.right = "16px";
       this.cartButton.style.zIndex = "1600";
+    }
+  };
+
+  /** Shoppable: brief cart icon animation (see `.cart-dance` in injected styles). */
+  triggerCartIconDance = () => {
+    const btn = this.cartButton;
+    if (!btn) return;
+    try {
+      btn.classList.remove("cart-dance");
+      void btn.offsetWidth;
+      btn.classList.add("cart-dance");
+      window.setTimeout(() => btn.classList.remove("cart-dance"), 600);
+    } catch {
+      /* ignore */
     }
   };
 
@@ -2192,23 +2227,82 @@ class FastPixPlayer extends windowObject.HTMLElement {
       return;
     }
 
-    // Resolve against underlying HLS audio tracks (handles de-duped snapshots).
-    const rawTracks: any[] = Array.isArray(this.audioTracksRetrieved)
+    const liveTracks: any[] = Array.isArray(hlsAny.audioTracks)
+      ? hlsAny.audioTracks
+      : [];
+    const manifestTracks: any[] = Array.isArray(this.audioTracksRetrieved)
       ? this.audioTracksRetrieved
-      : Array.isArray(hlsAny.audioTracks)
-        ? hlsAny.audioTracks
-        : [];
-    const resolvedIndex = rawTracks.findIndex(
-      (t: any) => (t?.name ?? "").toString().trim().toLowerCase() === key
-    );
+      : [];
 
-    if (resolvedIndex < 0 || resolvedIndex >= rawTracks.length) {
+    const resolveIndex = (tracks: any[]): number => {
+      if (!Array.isArray(tracks) || tracks.length === 0) return -1;
+      let idx = tracks.findIndex(
+        (t: any) => (t?.name ?? "").toString().trim().toLowerCase() === key
+      );
+      if (idx >= 0) return idx;
+      idx = tracks.findIndex(
+        (t: any) => (t?.lang ?? "").toString().trim().toLowerCase() === key
+      );
+      return idx;
+    };
+
+    let resolvedIndex = resolveIndex(liveTracks);
+    if (resolvedIndex < 0) {
+      const mi = resolveIndex(manifestTracks);
+      if (mi >= 0 && mi < liveTracks.length) {
+        resolvedIndex = mi;
+      }
+    }
+
+    if (
+      resolvedIndex < 0 ||
+      resolvedIndex >= liveTracks.length ||
+      liveTracks.length === 0
+    ) {
       console.warn(`Audio track "${languageName}" not found`);
       return;
     }
 
     try {
+      if (this.debugAttribute) {
+        console.debug("[fastpix-audio] setAudioTrack", {
+          label: languageName,
+          resolvedIndex,
+          muted: this.video?.muted,
+          paused: this.video?.paused,
+        });
+      }
+      const previousAudioTrackId =
+        typeof hlsAny.audioTrack === "number" ? hlsAny.audioTrack : -1;
+      nudgePlaybackAfterAudioTrackSwitch(
+        this,
+        this.hls,
+        resolvedIndex,
+        previousAudioTrackId
+      );
       hlsAny.audioTrack = resolvedIndex;
+      if (
+        !shouldUseLightweightAudioTrackSwitchPath(
+          this.hls,
+          previousAudioTrackId,
+          resolvedIndex
+        )
+      ) {
+        directResumePlaybackAfterAudioTrackChange(this, true);
+      }
+      // One deferred menu refresh (avoid double rebuild + long setTimeout handlers).
+      queueMicrotask(() => {
+        runAfterNextPaint(() => {
+          try {
+            if (hlsAny?.audioTrack !== resolvedIndex) {
+              hlsAny.audioTrack = resolvedIndex;
+            }
+            rebuildAudioMenuUI(this);
+          } catch {
+            /* ignore */
+          }
+        });
+      });
       // Refresh cached info and emit change event
       const tracks = this.getAudioTracks();
       const currentId = this.currentAudioTrackId;

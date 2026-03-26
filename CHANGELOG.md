@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.16]
+
+### Live playback
+
+- **Cleaner live UI** – For `stream-type="live-stream"`, the duration-style time readout stays hidden so the experience matches open-ended live viewing.
+
+### On-demand playback
+
+- **Smarter background loading on VOD** – On-demand streams use settings tuned for typical recorded playback; live streams use a lighter profile suited to the live edge.
+
+### Performance & stability
+
+- **Smoother day-to-day use** – Less chance of the browser reporting long scripting tasks during normal actions (timeline updates, audio track changes, subtitle changes, and Chromecast handoff).
+- **Programmatic audio** – When you switch tracks via `setAudioTrack(...)`, the built-in audio menu stays aligned with fewer redundant updates.
+
 ## [1.0.15]
 
 ### Audio & Subtitle UX (tracks + subtitles)

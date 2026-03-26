@@ -1,6 +1,6 @@
 {
   "name": "@fastpix/fp-player",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "FastPix Player SDK is a customizable video player for on-demand and live streaming.",
   "type": "module",
   "main": "./dist/player.js",
@@ -16,8 +16,8 @@
   ],
   "scripts": {
     "format": "prettier --write \"src/**/*.ts\"",
-    "build:esm": "esbuild src/player.ts --format=esm --target=es2019 --bundle --minify --legal-comments=none --drop:debugger --outfile=dist/player.esm.js",
-    "build:cdn": "esbuild src/player.ts --format=iife --global-name=FastPixPlayer --target=es2019 --bundle --minify --legal-comments=none --drop:debugger --outfile=dist/player.js",
+    "build:esm": "esbuild src/player.ts --format=esm --target=es2020 --bundle --minify --legal-comments=none --drop:debugger --drop:console --define:__FP_PLAYER_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/player.esm.js",
+    "build:cdn": "esbuild src/player.ts --format=iife --global-name=FastPixPlayer --target=es2020 --bundle --minify --legal-comments=none --drop:debugger --drop:console --define:__FP_PLAYER_VERSION__=\\\"$npm_package_version\\\" --outfile=dist/player.js",
     "build": "npm run format && npm run build:esm && npm run build:cdn",
     "format:css": "prettier --write \"src/utils/innerHtml.ts\""
   },
@@ -39,11 +39,11 @@
   "author": "FastPix, Inc",
   "license": "MIT",
   "dependencies": {
-    "@fastpix/video-data-core": "^1.0.5",
-    "hls.js": "^1.6.13"
+    "@fastpix/video-data-core": "^1.0.7"
   },
   "devDependencies": {
     "esbuild": "^0.27.3",
+    "hls.js": "^1.6.13",
     "prettier": "^3.3.3"
   }
 }

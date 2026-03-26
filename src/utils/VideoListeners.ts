@@ -1,4 +1,4 @@
-import { Hls } from "./HlsManager";
+import { getHlsConstructor } from "./HlsManager";
 import {
   initializeControlsAfterPlayClick,
   toggleVideoPlayback,
@@ -16,6 +16,7 @@ import {
   isChromeBrowser,
   updateTimeDisplay,
 } from "./index";
+import { runAfterNextPaint } from "./HlsManager";
 import { resizeVideoWidth } from "./ResizeVideo";
 import {
   disableAllSubtitles,
@@ -95,49 +96,51 @@ const videoListeners = (context: any) => {
       // Subtitles can attach *after* MANIFEST_PARSED; if so, re-emit a corrected tracks snapshot.
       try {
         setTimeout(() => {
-          try {
-            const player: any = context;
-            if (typeof player.getSubtitleTracks !== "function") return;
-            const subs = player.getSubtitleTracks();
-            const count = Array.isArray(subs) ? subs.length : 0;
-            const prev =
-              typeof player._lastTracksReadySubtitleCount === "number"
-                ? player._lastTracksReadySubtitleCount
-                : 0;
-            player._lastTracksReadySubtitleCount = count;
-            if (
-              count > 0 &&
-              prev === 0 &&
-              typeof player.dispatchEvent === "function"
-            ) {
-              const aud =
-                typeof player.getAudioTracks === "function"
-                  ? player.getAudioTracks()
-                  : [];
-              player.dispatchEvent(
-                new CustomEvent("fastpixtracksready", {
-                  detail: {
-                    audioTracks: aud,
-                    subtitleTracks: subs,
-                    currentAudioId:
-                      typeof player.currentAudioTrackId === "number"
-                        ? player.currentAudioTrackId
+          requestAnimationFrame(() => {
+            try {
+              const player: any = context;
+              if (typeof player.getSubtitleTracks !== "function") return;
+              const subs = player.getSubtitleTracks();
+              const count = Array.isArray(subs) ? subs.length : 0;
+              const prev =
+                typeof player._lastTracksReadySubtitleCount === "number"
+                  ? player._lastTracksReadySubtitleCount
+                  : 0;
+              player._lastTracksReadySubtitleCount = count;
+              if (
+                count > 0 &&
+                prev === 0 &&
+                typeof player.dispatchEvent === "function"
+              ) {
+                const aud =
+                  typeof player.getAudioTracks === "function"
+                    ? player.getAudioTracks()
+                    : [];
+                player.dispatchEvent(
+                  new CustomEvent("fastpixtracksready", {
+                    detail: {
+                      audioTracks: aud,
+                      subtitleTracks: subs,
+                      currentAudioId:
+                        typeof player.currentAudioTrackId === "number"
+                          ? player.currentAudioTrackId
+                          : null,
+                      currentSubtitleId:
+                        typeof player.currentSubtitleTrackId === "number"
+                          ? player.currentSubtitleTrackId
+                          : null,
+                      currentAudioTrackLoaded: Array.isArray(aud)
+                        ? (aud.find((t: any) => t?.isCurrent) ?? null)
                         : null,
-                    currentSubtitleId:
-                      typeof player.currentSubtitleTrackId === "number"
-                        ? player.currentSubtitleTrackId
+                      currentSubtitleLoaded: Array.isArray(subs)
+                        ? (subs.find((t: any) => t?.isCurrent) ?? null)
                         : null,
-                    currentAudioTrackLoaded: Array.isArray(aud)
-                      ? (aud.find((t: any) => t?.isCurrent) ?? null)
-                      : null,
-                    currentSubtitleLoaded: Array.isArray(subs)
-                      ? (subs.find((t: any) => t?.isCurrent) ?? null)
-                      : null,
-                  },
-                })
-              );
-            }
-          } catch {}
+                    },
+                  })
+                );
+              }
+            } catch {}
+          });
         }, 0);
       } catch {}
     });
@@ -205,8 +208,11 @@ const videoListeners = (context: any) => {
       if (isChromecastConnected()) {
         controlCastMedia("pause", context);
       } else {
-        context.playPauseButton.innerHTML = PlayIcon;
-        context.wasManuallyPaused = true;
+        // HLS alt→main hold: programmatic pause to freeze playhead; keep pause icon until real resume
+        if (!context.__fpAudioSwitchHoldActive) {
+          context.playPauseButton.innerHTML = PlayIcon;
+          context.wasManuallyPaused = true;
+        }
       }
       // Always allow user to click play/pause while paused (e.g., during hotspot wait)
       context.playPauseButton.disabled = false;
@@ -336,7 +342,7 @@ const videoListeners = (context: any) => {
 
     context.video.addEventListener("loadedmetadata", () => {
       updateTimeDisplay(context);
-      context.video.addEventListener("timeupdate", updateTimeDisplay(context));
+      // timeupdate is handled below (single listener); do not register `updateTimeDisplay(context)` — that passes `undefined` as handler.
 
       if (context.hasAutoPlayAttribute === true) {
         // Check if auto-play or loop-next attribute is specifically set (not just autoplay-shorts)
@@ -460,57 +466,64 @@ const videoListeners = (context: any) => {
     context.video.addEventListener("seeked", paintProgressBar);
 
     // ── timeupdate — everything except the bar fill ───────────────────────
+    // Coalesce to one rAF per tick so DevTools does not flag long `timeupdate` tasks
+    // (Cast synthetic timeupdate + DOM updates can exceed ~50ms otherwise).
+    let timeupdateRafId: number | null = null;
     context.video.addEventListener("timeupdate", () => {
-      if (
-        !context.video.paused &&
-        context.video.readyState >= 2 &&
-        isDurationAvailable(context)
-      ) {
-        hideLoader(context);
-      }
-
-      const currentTime = getCurrentTime(context);
-
-      // Toggle Skip Intro button visibility within configured window
-      if (
-        context.skipIntroButton &&
-        context.skipIntroStart != null &&
-        context.skipIntroEnd != null
-      ) {
+      if (timeupdateRafId !== null) return;
+      timeupdateRafId = requestAnimationFrame(() => {
+        timeupdateRafId = null;
         if (
-          Number.isFinite(context.skipIntroStart) &&
-          Number.isFinite(context.skipIntroEnd) &&
-          currentTime >= context.skipIntroStart &&
-          currentTime <= context.skipIntroEnd
+          !context.video.paused &&
+          context.video.readyState >= 2 &&
+          isDurationAvailable(context)
         ) {
-          context.skipIntroButton.style.display = "block";
-        } else {
+          hideLoader(context);
+        }
+
+        const currentTime = getCurrentTime(context);
+
+        // Toggle Skip Intro button visibility within configured window
+        if (
+          context.skipIntroButton &&
+          context.skipIntroStart != null &&
+          context.skipIntroEnd != null
+        ) {
+          if (
+            Number.isFinite(context.skipIntroStart) &&
+            Number.isFinite(context.skipIntroEnd) &&
+            currentTime >= context.skipIntroStart &&
+            currentTime <= context.skipIntroEnd
+          ) {
+            context.skipIntroButton.style.display = "block";
+          } else {
+            context.skipIntroButton.style.display = "none";
+          }
+        } else if (context.skipIntroButton) {
           context.skipIntroButton.style.display = "none";
         }
-      } else if (context.skipIntroButton) {
-        context.skipIntroButton.style.display = "none";
-      }
 
-      // Toggle Next Episode button visibility from configured time till end
-      if (
-        context.nextEpisodeButton &&
-        context.nextEpisodeOverlayStart != null &&
-        Number.isFinite(context.nextEpisodeOverlayStart)
-      ) {
-        const hasNext =
-          Array.isArray(context.playlist) &&
-          context.currentIndex < (context.playlist?.length ?? 0) - 1;
-        if (hasNext && currentTime >= context.nextEpisodeOverlayStart) {
-          context.nextEpisodeButton.style.display = "block";
-        } else {
+        // Toggle Next Episode button visibility from configured time till end
+        if (
+          context.nextEpisodeButton &&
+          context.nextEpisodeOverlayStart != null &&
+          Number.isFinite(context.nextEpisodeOverlayStart)
+        ) {
+          const hasNext =
+            Array.isArray(context.playlist) &&
+            context.currentIndex < (context.playlist?.length ?? 0) - 1;
+          if (hasNext && currentTime >= context.nextEpisodeOverlayStart) {
+            context.nextEpisodeButton.style.display = "block";
+          } else {
+            context.nextEpisodeButton.style.display = "none";
+          }
+        } else if (context.nextEpisodeButton) {
           context.nextEpisodeButton.style.display = "none";
         }
-      } else if (context.nextEpisodeButton) {
-        context.nextEpisodeButton.style.display = "none";
-      }
 
-      updateTimeDisplay(context);
-      activeChapter(context);
+        updateTimeDisplay(context);
+        activeChapter(context);
+      });
     });
 
     // seeked bar paint is handled by the RAF seeked listener above
@@ -634,7 +647,7 @@ const videoListeners = (context: any) => {
         }
 
         if (seekTime < bufferEnd) {
-          context.hls.trigger(Hls.Events.BUFFER_FLUSHING, {
+          context.hls.trigger(getHlsConstructor().Events.BUFFER_FLUSHING, {
             startOffset: seekTime,
             endOffset: Number.POSITIVE_INFINITY,
           });
@@ -834,18 +847,20 @@ function resumePlaybackOnLoadOnActiveSession(context: any) {
     );
 
     setTimeout(() => {
-      initializeControlsAfterPlayClick(context);
+      runAfterNextPaint(() => {
+        initializeControlsAfterPlayClick(context);
 
-      const pausedFlag = localStorage.getItem("pausedOnCasting") === "true";
-      context.pausedOnCasting = pausedFlag;
+        const pausedFlag = localStorage.getItem("pausedOnCasting") === "true";
+        context.pausedOnCasting = pausedFlag;
 
-      if (context.pausedOnCasting) {
-        controlCastMedia("pause", context);
-      } else {
-        controlCastMedia("play", context);
-      }
+        if (context.pausedOnCasting) {
+          controlCastMedia("pause", context);
+        } else {
+          controlCastMedia("play", context);
+        }
 
-      hideLoader(context);
+        hideLoader(context);
+      });
     }, 1200);
   }
 }

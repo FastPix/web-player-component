@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script defer src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js"></script>
+  <script defer src="../dist/player.js"></script>
+  <title>FastPix Player</title>
+  <style>
+    #player-playlist {
+      --shoppable-sidebar-width: 30%;
+    }
+  </style>
+</head>
+<body>
+  <h3>FastPix Player - Shoppable player & Navigation Demo</h3>
+
+  <fastpix-player 
+    id="player-playlist" m
+    theme="shoppable-video-player" 
+    playback-id="your-playback-id"
+    min-resolution="480p" 
+    max-resolution="720p">
+  </fastpix-player>
+
+  <script>
+    // Wait until the custom element is defined
+    customElements.whenDefined('fastpix-player').then(() => {
+      const player = document.getElementById('player-playlist');
+
+      const cartData = {
+        productSidebarConfig: {
+          startState: "openOnPlay",
+          autoClose: 4,
+          showPostPlayOverlay: true,
+        },
+        products: [
+          {
+            id: 1,
+            thumbnail: "https://in.zohocommercecdn.com/product-images/JNW+Shajahan+Sofa+Set+Single+Rosewood+1.jpg/431189000086560983/600x600?storefront_domain=www.jfa.in",
+            name: "chair",
+            description: "Description 1",
+            startTime: 0,
+            endTime: 5,
+            markers: [
+              {
+                x: 175,
+                y: 60,
+                tooltipPosition: "left",
+                link: "https://www.jfa.in/products/JNW-Shajahan-Sofa-Set-Single-Rosewood-Dx-Premium-Wooden-Sofa-Set/431189000029424510",
+              },
+            ],
+            onProductClick: {
+              type: "seek",
+              waitTillPause: 6,
+              params: {
+                seekTime: 5,
+              },
+            },
+            onProductHover: {
+              type: "overlay",
+              params: {
+                description: "see this product in the video",
+              },
+            },
+          },
+          {
+            id: 2,
+            thumbnail: "https://in.zohocommercecdn.com/product-images/FDI+Treviso+Sofa+3+Seater+1.jpg/431189000087278412/600x600?storefront_domain=www.jfa.in",
+            name: "Treviso Sofa",
+            description: "Description 1",
+            startTime: 6,
+            endTime: 10,
+            markers: [
+              {
+                x: 60,
+                y: 50,
+                tooltipPosition: "left",
+                link: "https://www.jfa.in/products/aa55d60413/431189000071080281",
+              },
+            ],
+            onProductClick: {
+              type: "seek",
+              waitTillPause: 3,
+              params: {
+                seekTime: 7,
+              },
+            },
+            onProductHover: {
+              type: "overlay",
+              params: {
+                description: "see this product in the video",
+              },
+            },
+          },
+          {
+            id: 3,
+            thumbnail: "https://in.zohocommercecdn.com/product-images/1400x1400-Photoroom+%281%29.jpg/431189000076435150/600x600?storefront_domain=www.jfa.in",
+            name: "Product 2",
+            description: "Description 2",
+            startTime: 11,
+            endTime: 18,
+            onProductClick: {
+              type: "openLink",
+              shouldPause: true,
+              params: {
+                targetUrl: "https://www.jfa.in/products/guru-ct-01-computer-table-30x18x30-walnut-computer-study-table/431189000070278273",
+              },
+            },
+            onProductHover: {
+              type: "overlay",
+              params: {
+                description: "Click to view the product",
+              },
+            },
+          },
+          {
+            id: 4,
+            thumbnail: "https://in.zohocommercecdn.com/product-images/AMM+Topaz+Plastic+Chair+W+Metal+Leg+and+Seat+Cushion+YellowOffice+Chair+3.jpg/431189000087691668/300x300?storefront_domain=www.jfa.in",
+            name: "AMM Topaz Plastic Chair",
+            description: "Description 3",
+            markers: [
+              {
+                x: 50,
+                y: 50,
+                tooltipPosition: "top",
+                link: "https://www.jfa.in/products/JNW-DT-Heart-Jali-Dining-Table-60X36-Walnut-Dining-Table/431189000029421080",
+              },
+            ],
+            onProductClick: {
+              type: "seek",
+              waitTillPause: 30,
+              params: {
+                seekTime: 32,
+              },
+            },
+            onProductHover: {
+              type: "swap",
+              params: {
+                switchImage: "https://in.zohocommercecdn.com/product-images/AMM+Topaz+Plastic+Chair+W+Metal+Leg+and+Seat+Cushion+YellowOffice+Chair+1.jpg/431189000087691662/600x600?storefront_domain=www.jfa.in",
+              },
+            },
+          },
+        ],
+      };
+
+      // Provide your shoppable JSON
+      player.addShoppableData(cartData);
+
+      // Optional: listen to events
+      player.addEventListener('productHover', (e) => console.log('hover:', e.detail.product));
+      player.addEventListener('productClick', (e) => console.log('click:', e.detail.product));
+      player.addEventListener('productBarMax', () => console.log('bar opened'));
+      player.addEventListener('productBarMin', () => console.log('bar closed'));
+      player.addEventListener('productHoverPost', (e) => console.log('overlay hover:', e.detail.product));
+      player.addEventListener('productClickPost', (e) => console.log('overlay click:', e.detail.product));
+      player.addEventListener('replay', () => console.log('replay'));
+    });
+  </script>
+</body>
+</html>

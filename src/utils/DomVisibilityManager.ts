@@ -140,6 +140,8 @@ function showLoader(context: any) {
 }
 
 function hideLoader(context: any) {
+  // During HLS audio-switch hold, keep spinner until SWITCHED / fallback schedules hide
+  if (context.__fpAudioSwitchHoldActive) return;
   context.loader.style.display = "none"; // none
   context.playPauseButton.classList.add("showPlayButton");
 }
@@ -168,11 +170,10 @@ function handleTitleContainer(context: any) {
 
     if (!context.hasAttribute("target-live-window")) {
       context.bottomRightDiv.removeChild(context.playbackRateButton);
-      context.timeDisplay.style.display = "none";
     } else {
       context.bottomRightDiv.appendChild(context.playbackRateButton);
-      context.timeDisplay.style.display = "flex";
     }
+    context.timeDisplay.style.display = "none";
 
     context.parentLiveTitleContainer.appendChild(context.liveStreamDisplay);
   }

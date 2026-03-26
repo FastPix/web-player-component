@@ -133,6 +133,24 @@ function loadCastAPI(): void {
 
 let hasDispatchedEndedEvent = false;
 
+/** One media poll for the whole page — avoids N `setInterval`s when several players init Cast (e.g. Shorts). */
+let castMediaSyncPollId: ReturnType<typeof setInterval> | null = null;
+
+type CastMediaSyncActive = {
+  video: HTMLVideoElement;
+  playerContext: any;
+};
+
+let castMediaSyncActive: CastMediaSyncActive | null = null;
+
+function clearCastMediaSyncPoll(): void {
+  if (castMediaSyncPollId !== null) {
+    clearInterval(castMediaSyncPollId);
+    castMediaSyncPollId = null;
+  }
+  castMediaSyncActive = null;
+}
+
 function setupChromecast(
   button: HTMLButtonElement,
   video: HTMLVideoElement,
@@ -192,6 +210,10 @@ function freezeVideoWhileUpdatingProgress(
   video: HTMLVideoElement,
   playerContext: any
 ) {
+  if (playerContext.__fpCastFreezeProgressInterval != null) {
+    clearInterval(playerContext.__fpCastFreezeProgressInterval);
+    playerContext.__fpCastFreezeProgressInterval = null;
+  }
   function updateTime() {
     if (!isChromecastConnected()) return;
     const session = (
@@ -206,7 +228,10 @@ function freezeVideoWhileUpdatingProgress(
       }
     }
   }
-  setInterval(updateTime, 1000);
+  playerContext.__fpCastFreezeProgressInterval = window.setInterval(() => {
+    // Yield out of the interval turn so Chrome does not attribute heavy work to setInterval.
+    requestAnimationFrame(updateTime);
+  }, 1000);
 }
 
 function syncSeekWithChromecast(playerContext: any) {
@@ -248,12 +273,14 @@ function syncPlaybackWithChromecast(
 ) {
   const castContext = getCastContext();
   const SessionState = (window as any).cast.framework.SessionState;
-  let updateInterval: number | null = null;
 
   castContext.addEventListener(
     (window as any).cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
     (event: any) => {
       const session = castContext.getCurrentSession();
+      const w = window as any;
+      const intendedSenderPc = w.__fastpixCastingPlayerContext;
+
       castLog("SESSION_STATE_CHANGED", {
         sessionState: event.sessionState,
         hasSession: !!session,
@@ -262,70 +289,89 @@ function syncPlaybackWithChromecast(
       switch (event.sessionState) {
         case SessionState.SESSION_STARTED:
         case SessionState.SESSION_RESUMED: {
+          playerContext.currentCastSession = session;
+
+          if (intendedSenderPc != null && intendedSenderPc !== playerContext) {
+            video.pause();
+            break;
+          }
+
+          if (castMediaSyncPollId !== null) {
+            video.pause();
+            break;
+          }
+
           const { isMuted, mediaVolume } = getStoredVolume(playerContext);
           const safeVolume = Math.min(Math.max(mediaVolume, 0), 1);
-          const { remotePlayer } = getRemotePlaybackInstance(playerContext);
 
           localStorage.setItem("chromecastFinished", "false");
           lastPlaybackTime = video.currentTime;
           localStorage.setItem("chromecastActive", "true");
-          playerContext.currentCastSession = session;
           freezeVideoWhileUpdatingProgress(video, playerContext);
           syncVolumeWithChromecast(safeVolume, isMuted);
           video.pause();
 
-          if (updateInterval) clearInterval(updateInterval as any);
+          castMediaSyncActive = { video, playerContext };
           let lastLoggedState: string | null = null;
-          updateInterval = window.setInterval(() => {
-            const media = session?.getMediaSession();
-            if (!media) return;
 
-            const state = media.playerState;
-            if (state !== lastLoggedState) {
-              castLog("Media state", {
-                playerState: state,
-                estimatedTime: media.getEstimatedTime?.(),
-              });
-              lastLoggedState = state;
-            }
-            lastPlaybackTime = media.getEstimatedTime();
+          castMediaSyncPollId = window.setInterval(() => {
+            requestAnimationFrame(() => {
+              const active = castMediaSyncActive;
+              if (!active) return;
+              const sessNow = getCastContext()?.getCurrentSession?.();
+              const media = sessNow?.getMediaSession?.();
+              if (!media) return;
 
-            if (media.playerState === "BUFFERING") {
-              showLoader(playerContext);
-            } else {
-              hideLoader(playerContext);
-            }
+              const pc = active.playerContext;
+              const vid = active.video;
+              const rp = getRemotePlaybackInstance(pc).remotePlayer;
 
-            playerContext.pausedOnCasting = media.playerState === "PAUSED";
+              const state = media.playerState;
+              if (state !== lastLoggedState) {
+                castLog("Media state", {
+                  playerState: state,
+                  estimatedTime: media.getEstimatedTime?.(),
+                });
+                lastLoggedState = state;
+              }
+              lastPlaybackTime = media.getEstimatedTime();
 
-            const loopEnabled =
-              playerContext.loopEnabled ?? remotePlayer?.isLoopingEnabled;
+              if (media.playerState === "BUFFERING") {
+                showLoader(pc);
+              } else {
+                hideLoader(pc);
+              }
 
-            if (
-              remotePlayer?.duration &&
-              Math.floor(lastPlaybackTime) >=
-                Math.floor(remotePlayer.duration) &&
-              !loopEnabled &&
-              !hasDispatchedEndedEvent
-            ) {
-              const endedEvent = new Event("ended");
-              video.dispatchEvent(endedEvent);
-              hasDispatchedEndedEvent = true;
-              hideInitControls(playerContext);
-              showLoader(playerContext);
-              localStorage.setItem("chromecastFinished", "true");
-              localStorage.setItem("chromecastActive", "false");
-              showLoader(playerContext);
-            }
+              pc.pausedOnCasting = media.playerState === "PAUSED";
 
-            if (
-              remotePlayer?.duration &&
-              Math.floor(lastPlaybackTime) <
-                Math.floor(remotePlayer.duration) &&
-              hasDispatchedEndedEvent
-            ) {
-              hasDispatchedEndedEvent = false;
-            }
+              const loopEnabled = pc.loopEnabled ?? rp?.isLoopingEnabled;
+
+              if (
+                rp?.duration &&
+                Math.floor(lastPlaybackTime) >= Math.floor(rp.duration) &&
+                !loopEnabled &&
+                !hasDispatchedEndedEvent
+              ) {
+                const endedEvent = new Event("ended");
+                vid.dispatchEvent(endedEvent);
+                hasDispatchedEndedEvent = true;
+                hideInitControls(pc);
+                showLoader(pc);
+                localStorage.setItem("chromecastFinished", "true");
+                localStorage.setItem("chromecastActive", "false");
+                showLoader(pc);
+              }
+
+              if (
+                rp?.duration &&
+                Math.floor(lastPlaybackTime) < Math.floor(rp.duration) &&
+                hasDispatchedEndedEvent
+              ) {
+                hasDispatchedEndedEvent = false;
+              }
+
+              vid.dispatchEvent(new Event("timeupdate"));
+            });
           }, 1000);
           break;
         }
@@ -341,15 +387,27 @@ function syncPlaybackWithChromecast(
           }
 
           lastPlaybackTime = media?.getEstimatedTime() ?? lastPlaybackTime;
-          video.currentTime = lastPlaybackTime;
           playerContext.currentCastSession = null;
 
-          if (updateInterval) {
-            clearInterval(updateInterval as any);
-            updateInterval = null;
-          }
+          const senderPc = w.__fastpixCastingPlayerContext;
+          const senderVid = w.__fastpixCastingVideo as
+            | HTMLVideoElement
+            | undefined;
 
-          localStorage.setItem("media-volume", video.volume.toString());
+          const isSenderStop = senderPc == null || senderPc === playerContext;
+
+          if (isSenderStop) {
+            if (senderPc?.__fpCastFreezeProgressInterval != null) {
+              clearInterval(senderPc.__fpCastFreezeProgressInterval);
+              senderPc.__fpCastFreezeProgressInterval = null;
+            }
+            clearCastMediaSyncPoll();
+            const v = senderVid ?? video;
+            v.currentTime = lastPlaybackTime;
+            localStorage.setItem("media-volume", v.volume.toString());
+            w.__fastpixCastingPlayerContext = null;
+            w.__fastpixCastingVideo = null;
+          }
 
           if (playerContext.pausedOnCasting) {
             video.pause();
@@ -472,17 +530,6 @@ function initializeCastApi(
     (event: any) => updateCastButton(button, event.castState, playerContext)
   );
 
-  setInterval(() => {
-    const session = castContext.getCurrentSession();
-    if (session) {
-      const media = session.getMediaSession();
-      if (media) {
-        lastPlaybackTime = media.getEstimatedTime();
-        video.dispatchEvent(new Event("timeupdate"));
-      }
-    }
-  }, 1000);
-
   updateCastButton(button, castContext.getCastState(), playerContext);
 
   button.addEventListener("click", () =>
@@ -542,6 +589,8 @@ function toggleCasting(
       );
   } else {
     castLog("No session, requesting session then sending media");
+    (window as any).__fastpixCastingPlayerContext = playerContext;
+    (window as any).__fastpixCastingVideo = video;
     castContext
       .requestSession()
       .then(() =>
@@ -715,6 +764,8 @@ function sendMediaToChromecast(
   }
 
   lastPlaybackTime = video.currentTime;
+  (window as any).__fastpixCastingPlayerContext = playerContext;
+  (window as any).__fastpixCastingVideo = video;
   const autoplay = true;
   const url = initialUrl;
 
@@ -882,34 +933,36 @@ function sendMediaToChromecast(
         let diagnosticTicks = 0;
         let foundPlaying = false;
         const diagnosticInterval = window.setInterval(() => {
-          const media = session.getMediaSession();
-          if (media) {
-            logMediaStatus(media, `TV status #${++diagnosticTicks}`);
+          requestAnimationFrame(() => {
+            const media = session.getMediaSession();
+            if (media) {
+              logMediaStatus(media, `TV status #${++diagnosticTicks}`);
 
-            if (media.playerState === "PLAYING") {
-              foundPlaying = true;
-              window.clearInterval(diagnosticInterval);
-              castLog("✅ Stream is PLAYING on Chromecast!");
-            }
+              if (media.playerState === "PLAYING") {
+                foundPlaying = true;
+                window.clearInterval(diagnosticInterval);
+                castLog("✅ Stream is PLAYING on Chromecast!");
+              }
 
-            if (
-              typeof media.addUpdateListener === "function" &&
-              diagnosticTicks === 1
-            ) {
-              media.addUpdateListener((isAlive: boolean) => {
-                castLog("TV media update", {
-                  isAlive,
-                  playerState: media.playerState,
-                  idleReason: media.idleReason,
+              if (
+                typeof media.addUpdateListener === "function" &&
+                diagnosticTicks === 1
+              ) {
+                media.addUpdateListener((isAlive: boolean) => {
+                  castLog("TV media update", {
+                    isAlive,
+                    playerState: media.playerState,
+                    idleReason: media.idleReason,
+                  });
                 });
+              }
+            } else {
+              castLog(`TV status #${++diagnosticTicks}`, {
+                mediaSession: "not ready yet",
               });
             }
-          } else {
-            castLog(`TV status #${++diagnosticTicks}`, {
-              mediaSession: "not ready yet",
-            });
-          }
-          if (diagnosticTicks >= 10) window.clearInterval(diagnosticInterval);
+            if (diagnosticTicks >= 10) window.clearInterval(diagnosticInterval);
+          });
         }, 2000);
 
         const tryPlay = (attempt: number) => {

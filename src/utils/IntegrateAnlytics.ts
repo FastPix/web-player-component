@@ -1,6 +1,13 @@
 import fastpixMetrix from "@fastpix/video-data-core";
 import { Context } from "./index";
 
+declare const __FP_PLAYER_VERSION__: string | undefined;
+
+const PLAYER_SOFTWARE_VERSION =
+  typeof __FP_PLAYER_VERSION__ === "string"
+    ? __FP_PLAYER_VERSION__
+    : "0.0.0-dev";
+
 // Hls Class Type (Third-Party Library)
 type HlsClass = new () => HlsInstance;
 
@@ -167,7 +174,7 @@ export function initializeAnalytics(
   data = {
     ...data,
     player_software_name: "fastpix-player-data-monitoring",
-    player_software_version: "1.0.8",
+    player_software_version: PLAYER_SOFTWARE_VERSION,
   };
   const debug = context.hasAttribute("enable-debug");
   const disableCookies = context.hasAttribute("disable-cookies");
@@ -177,7 +184,7 @@ export function initializeAnalytics(
   );
   const workspaceKey = context.getAttribute("metadata-workspace-key");
   const shouldTrack = !disabledDataMonitoring && !!workspaceKey;
-  const configDomain = context.getAttribute("config-domain") || "metrix.ws";
+  const configDomain = context.getAttribute("config-domain") || "anlytix.io";
 
   if (shouldTrack) {
     fastpixMetrix.tracker(video, {
