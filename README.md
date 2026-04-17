@@ -111,6 +111,41 @@ This SDK simplifies HLS video playback by offering a wide range of customization
   - **Full reference**:
     - See **`AUDIO_SUBTITLE_TRACKS_API.md`** for the complete API, examples, and best practices.
 
+- ## Quality & resolution (custom UI)
+
+  Multivariant HLS supports **ABR** (automatic quality) and **manual** quality locking without changing `streamUrl`. Hide the built-in control with `--resolution-selector: none` and use the API below to build your own quality menu.
+
+  **Methods:**
+
+  | Method | What it does |
+  |--------|--------------|
+  | `getQualityLevels()` | Returns all available resolutions. Each entry has `id`, `label` (e.g. `"720p"`), `height`, `width`, `bitrate`, `frameRate`. Pass `id` to `setQualityLevel()`. |
+  | `setQualityLevel(id)` | Locks playback to one resolution (manual mode). `id` comes from `getQualityLevels()`. |
+  | `setQualityAuto()` | Re-enables ABR — player picks quality based on network speed. |
+  | `getPlaybackQuality()` | Returns `{ mode, lockedLevel, loadedLevel }`. `mode` is `"auto"` or `"manual"`. |
+
+  **Events:**
+
+  | Event | When it fires | `event.detail` |
+  |-------|---------------|----------------|
+  | `fastpixqualitylevelsready` | Manifest parsed; safe to build your menu | `{ levels: [...] }` |
+  | `fastpixqualitychange` | ABR switched level, or user picked a level | `{ mode, lockedLevel, loadedLevel, previousLoadedLevel? }` |
+  | `fastpixqualityfailed` | Invalid `levelId` or rendition load error | `{ reason, levelId?, raw? }` |
+
+  **CSS variable:**
+
+  | Variable | Effect |
+  |----------|--------|
+  | `--resolution-selector: none` | Hides the built-in resolution button so only your custom menu is shown. |
+
+  **Ladder attributes** (`min-resolution`, `max-resolution`, `resolution`, `rendition-order`) are documented under **Resolution Settings** in this README.
+
+- ## Custom UI slots (named slot regions)
+
+  Add buttons or markup **over the video** using standard **named slots** as children of `<fastpix-player>` (e.g. `slot="top-right"`, `slot="bottom-left"`). Nine regions are available in a 3×3 grid; tune stacking and bottom offset with `--user-slot-z` and `--user-slot-bottom-clearance`.
+
+  **Guide:** **`SLOTS_DEVELOPER_GUIDE.md`** · **API:** `getUserSlotsOverlay()` · **Shadow part:** `part="user-slots"` on the internal overlay. **Bundled demo:** **`demo/slots_demo.html`** (multiple controls per region + sibling slot assignments; run `npm run build` first).
+
 - ## Styling and color customization:
 
   - Customize the player’s visual elements using the `accent-color`, `primary-color`, and `secondary-color` attributes:

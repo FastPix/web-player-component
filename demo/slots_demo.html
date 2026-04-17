@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Named slots — FastPix Player</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/@fastpix/fp-player@latest"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 0 20px;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .hint {
+      font-size: 14px;
+      color: #444;
+      margin-bottom: 12px;
+      line-height: 1.55;
+    }
+    .hint code {
+      font-size: 12px;
+    }
+    .patterns {
+      font-size: 13px;
+      background: #f4f4f5;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+    .patterns strong {
+      color: #111;
+    }
+    .patterns pre {
+      margin: 10px 0 0;
+      padding: 10px 12px;
+      background: #fff;
+      border: 1px solid #e4e4e7;
+      border-radius: 6px;
+      font-size: 11px;
+      overflow-x: auto;
+      line-height: 1.4;
+    }
+    .player-shell {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #111;
+      /* Same width as the player; used for vars / fallbacks that are not easy to put on the host itself. */
+      container-type: inline-size;
+      container-name: slots-demo-shell;
+    }
+    fastpix-player {
+      width: 100%;
+      height: 100%;
+      display: block;
+      --aspect-ratio: 16/9;
+      --user-slot-z: 2001;
+      /*
+        Default player CSS uses a large bottom inset (--user-slot-bottom-clearance ≈ 52–140px) so bottom-row
+        slots sit above the seek bar. That asymmetry shrinks the slot grid from below and pulls “center” rows
+        upward in windowed mode. Tune clearance + ::part padding so windowed layout matches what you expect.
+      */
+      --demo-slot-bar-clearance: 48px;
+      --user-slot-bottom-clearance: var(--demo-slot-bar-clearance);
+    }
+    fastpix-player::part(user-slots) {
+      box-sizing: border-box;
+      padding: 6px;
+      padding-bottom: calc(6px + var(--user-slot-bottom-clearance));
+    }
+    .slot-badge {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #a7f3d0;
+      border: 1px solid rgba(167, 243, 208, 0.35);
+    }
+    /* Multiple controls in one slot: prefer one wrapper + flex/grid (fullscreen-safe, easy layout). */
+    .slot-cluster {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      max-width: min(100%, 360px);
+    }
+    .slot-cluster--col {
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    /* On very narrow players, vertical stacks eat the middle row — switch to a horizontal strip. */
+    @container fp-player (max-width: 420px) {
+      #slots-demo-player .slot-cluster--col.slot-cr {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        max-width: min(100%, 200px);
+      }
+    }
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      max-width: min(100%, 320px);
+    }
+    .mini-btn {
+      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.65);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(6px);
+    }
+    .mini-btn:hover {
+      background: rgba(35, 35, 35, 0.9);
+    }
+    .mini-btn[data-tone="violet"] {
+      background: rgba(91, 33, 182, 0.85);
+    }
+    .mini-btn[data-tone="amber"] {
+      background: rgba(180, 83, 9, 0.9);
+    }
+    .pill-btn {
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.5);
+      color: #e5e5e5;
+    }
+    .pill-btn:hover {
+      background: rgba(40, 40, 40, 0.85);
+    }
+    .slot-hint-bottom {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.88);
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+    }
+    .status {
+      margin-top: 14px;
+      padding: 10px 12px;
+      font-size: 13px;
+      background: #f4f4f5;
+      border-radius: 8px;
+      color: #333;
+      font-family: ui-monospace, monospace;
+      line-height: 1.45;
+    }
+    /* Fullscreen when the internal video element is fullscreen — float these roots (one node per region). */
+    .slot-fs-root.is-fs-overlay {
+      position: fixed;
+      z-index: 2147483000;
+    }
+    .slot-fs-root.is-fs-overlay.slot-badge-wrap {
+      left: max(10px, env(safe-area-inset-left, 0px));
+      top: max(10px, env(safe-area-inset-top, 0px));
+    }
+    .slot-fs-root.is-fs-overlay.slot-tr {
+      right: max(10px, env(safe-area-inset-right, 0px));
+      top: max(10px, env(safe-area-inset-top, 0px));
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+      max-width: min(92vw, 360px);
+    }
+    .slot-fs-root.is-fs-overlay.slot-tc {
+      left: 50%;
+      transform: translateX(-50%);
+      top: max(10px, env(safe-area-inset-top, 0px));
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 6px;
+      max-width: 92vw;
+    }
+    .slot-fs-root.is-fs-overlay.slot-cr {
+      right: max(10px, env(safe-area-inset-right, 0px));
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .slot-fs-root.is-fs-overlay.slot-bl {
+      left: max(10px, env(safe-area-inset-left, 0px));
+      bottom: max(calc(var(--demo-slot-bar-clearance, 48px) + 16px), env(safe-area-inset-bottom, 0px));
+      top: auto;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      gap: 6px;
+    }
+    .slot-fs-root.is-fs-overlay.slot-bc {
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: max(16px, env(safe-area-inset-bottom, 0px));
+      top: auto;
+    }
+
+    /* --- Responsive slotted UI (player width via @container; viewport fallback for tooling) --- */
+    @container fp-player (max-width: 560px) {
+      #slots-demo-player .slot-badge {
+        font-size: 9px;
+        padding: 4px 6px;
+      }
+      #slots-demo-player .slot-cluster,
+      #slots-demo-player .pill-row {
+        gap: 4px;
+        max-width: 100%;
+      }
+      #slots-demo-player .mini-btn {
+        padding: 4px 8px;
+        font-size: 10px;
+      }
+      #slots-demo-player .pill-btn {
+        padding: 3px 8px;
+        font-size: 10px;
+      }
+      #slots-demo-player .slot-hint-bottom {
+        font-size: 9px;
+        padding: 3px 8px;
+        max-width: min(100%, 200px);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+
+    @container fp-player (max-width: 400px) {
+      #slots-demo-player .mini-btn {
+        padding: 3px 6px;
+        font-size: 10px;
+      }
+      #slots-demo-player .pill-row {
+        flex-wrap: nowrap;
+        justify-content: center;
+        overflow-x: auto;
+        overflow-y: hidden;
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+      }
+      #slots-demo-player .slot-cluster.slot-tr {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        max-width: 100%;
+        justify-content: flex-end;
+      }
+    }
+
+    @container slots-demo-shell (max-width: 560px) {
+      .player-shell fastpix-player {
+        --demo-slot-bar-clearance: 72px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      #slots-demo-player {
+        --demo-slot-bar-clearance: 72px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Named slots demo</h1>
+  <p class="hint">
+    Light-DOM children of <code>&lt;fastpix-player&gt;</code> use <code>slot="…"</code> to land in fixed regions
+    (3×3 grid). See <strong>SLOTS_DEVELOPER_GUIDE.md</strong>. This page is <strong>slots only</strong> (no quality API).
+    For quality + slots together, use <strong>demo/custom_quality_demo.html</strong>.
+  </p>
+  <div class="patterns">
+    <strong>Multiple controls in one region</strong><br />
+    Use a <strong>single</strong> element with <code>slot="…"</code> (usually a <code>&lt;div&gt;</code>) and put several buttons
+    inside; style the container with flexbox or grid. That keeps toolbars aligned and makes fullscreen overlays
+    straightforward (one root to pin with <code>position: fixed</code>).<br /><br />
+    <strong>Alternative: several siblings with the same slot name</strong> — each light-DOM node with
+    <code>slot="bottom-left"</code> (for example) is assigned to that region in <strong>document order</strong>. Handy when you
+    generate items in a loop; for a tight row of buttons, a wrapper is usually simpler to lay out.<br /><br />
+    <strong>Live below:</strong> <code>bottom-right</code> uses two sibling elements with the same <code>slot</code> (no wrapper).
+    Fullscreen may obscure them unless you pin with script or a wrapper — see <strong>Fullscreen behavior</strong> in the guide.
+    <pre>&lt;!-- Same slot, multiple nodes (order preserved) --&gt;
+&lt;button type="button" slot="bottom-left"&gt;Save&lt;/button&gt;
+&lt;button type="button" slot="bottom-left"&gt;Share&lt;/button&gt;</pre>
+  </div>
+
+  <div class="player-shell">
+    <fastpix-player
+      id="slots-demo-player"
+      playback-id="cdb7ebbc-394f-44fb-9647-8051b9cfceee"
+      token="eyJhbGciOiJSUzI1NiJ9.eyJraWQiOiI0OTA1MmEyMi02OWQzLTRkZmUtYTM4MC03MzFlNzg3MWUyOWQiLCJhdWQiOiJtZWRpYTpjZGI3ZWJiYy0zOTRmLTQ0ZmItOTY0Ny04MDUxYjljZmNlZWUiLCJpc3MiOiJmYXN0cGl4LmlvIiwic3ViIjoiIiwiaWF0IjoxNzc2MDcxOTg1LCJleHAiOjE3NzYxNTgzODV9.eJGLzeoP4-_vGtVDQcctGp5vEctGz1Z18WHfg8NNjuA85DxTUBtIVI4JamvUuWg5zFj1xmSDqp5LIMqcc8mvofcDwjCJaNAYsqMCssus6AT9HO4jdOfFolKmV4qhw6bfvE_InTCgCr4czfwr1OM3veajKKZzLa5vclt7CyFvdjuTRLmezliHVU1FoevSp2vJPeREhGFEfVTIfnSXIr_7sqj-zUr4GDXo4ntcOM_9xhpXOzJSppT4wjOQExKa6R1nfUBYY_N0qIXqaDecuvcZ7qSVIK4iVI4z38H4NTP1OrT-B4jVCTXmcPhvfJY67qssSlo34ClWTdYoy9qmwkr6Fw"
+      preload="auto"
+      muted
+      metadata-video-title="Slots demo"
+    >
+      <div class="slot-fs-root slot-badge-wrap" slot="top-left">
+        <span class="slot-badge">top-left</span>
+      </div>
+
+      <!-- One slot, one root: horizontal cluster (top-right) -->
+      <div class="slot-cluster slot-fs-root slot-tr" slot="top-right">
+        <button type="button" class="mini-btn" data-slot-demo="tr-a">Alpha</button>
+        <button type="button" class="mini-btn" data-tone="violet" data-slot-demo="tr-b">Beta</button>
+        <button type="button" class="mini-btn" data-tone="amber" data-slot-demo="tr-c">Gamma</button>
+      </div>
+
+      <!-- One slot, one root: pill row (top-center) -->
+      <div class="pill-row slot-fs-root slot-tc" slot="top-center">
+        <button type="button" class="pill-btn" data-slot-demo="tc-1">One</button>
+        <button type="button" class="pill-btn" data-slot-demo="tc-2">Two</button>
+        <button type="button" class="pill-btn" data-slot-demo="tc-3">Three</button>
+      </div>
+
+      <!-- One slot, one root: vertical cluster (center-right) -->
+      <div class="slot-cluster slot-cluster--col slot-fs-root slot-cr" slot="center-right">
+        <button type="button" class="mini-btn" data-slot-demo="cr-up">Up</button>
+        <button type="button" class="mini-btn" data-slot-demo="cr-mid">Mid</button>
+        <button type="button" class="mini-btn" data-slot-demo="cr-down">Down</button>
+      </div>
+
+      <!-- One slot, one root: row of icon buttons (bottom-left) — same pattern, different region -->
+      <div class="slot-cluster slot-fs-root slot-bl" slot="bottom-left">
+        <button type="button" class="mini-btn" data-slot-demo="bl-1">①</button>
+        <button type="button" class="mini-btn" data-slot-demo="bl-2">②</button>
+        <button type="button" class="mini-btn" data-slot-demo="bl-3">③</button>
+      </div>
+
+      <div class="slot-hint-bottom slot-fs-root slot-bc" slot="bottom-center">slot: bottom-center</div>
+
+      <!-- Pattern B: multiple light-DOM siblings, same slot (no shared wrapper) -->
+      <button type="button" class="pill-btn" slot="bottom-right" data-slot-demo="br-a">A</button>
+      <button type="button" class="pill-btn" slot="bottom-right" data-slot-demo="br-b">B</button>
+    </fastpix-player>
+  </div>
+
+  <div class="status" id="slots-demo-status">Last clicked: —</div>
+
+  <script>
+    customElements.whenDefined("fastpix-player").then(() => {
+      const player = document.getElementById("slots-demo-player");
+      const statusEl = document.getElementById("slots-demo-status");
+      const fsRoots = player.querySelectorAll(".slot-fs-root");
+
+      function getFullscreenElement() {
+        return (
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          null
+        );
+      }
+
+      function isFsInsideOurPlayer() {
+        const fs = getFullscreenElement();
+        if (!fs) return false;
+        if (player === fs) return true;
+        try {
+          return Boolean(player.shadowRoot && player.shadowRoot.contains(fs));
+        } catch {
+          return false;
+        }
+      }
+
+      function syncFullscreenOverlay() {
+        const on = isFsInsideOurPlayer();
+        fsRoots.forEach((el) => el.classList.toggle("is-fs-overlay", on));
+      }
+
+      ["fullscreenchange", "webkitfullscreenchange"].forEach((ev) => {
+        document.addEventListener(ev, syncFullscreenOverlay);
+      });
+      syncFullscreenOverlay();
+
+      player.addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-slot-demo]");
+        if (!btn || !player.contains(btn)) return;
+        const id = btn.getAttribute("data-slot-demo") || "?";
+        const label = (btn.textContent || "").trim().replace(/\s+/g, " ");
+        statusEl.textContent =
+          'Last clicked: "' + label + '" (data-slot-demo="' + id + '")';
+      });
+    });
+  </script>
+</body>
+</html>

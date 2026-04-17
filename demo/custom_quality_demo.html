@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom quality menu &amp; slots — FastPix Player</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/@fastpix/fp-player@latest"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 0 20px;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .hint {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .player-shell {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #111;
+      container-type: inline-size;
+      container-name: cq-quality-shell;
+    }
+    fastpix-player {
+      width: 100%;
+      height: 100%;
+      display: block;
+      --aspect-ratio: 16/9;
+      /* Above built-in chrome (e.g. cart z-index 1600) so the Quality control stays visible. */
+      --user-slot-z: 2001;
+      /* See demo/slots_demo.html — default bottom clearance is large in windowed mode; tune so slots hug the frame. */
+      --user-slot-bottom-clearance: 48px;
+      --resolution-selector: none;
+    }
+    fastpix-player::part(user-slots) {
+      box-sizing: border-box;
+      padding: 6px;
+      padding-bottom: calc(6px + var(--user-slot-bottom-clearance));
+    }
+    /* --- Slotted UI: examples only; slottables are light-DOM children of fastpix-player --- */
+    .slot-example-top-left {
+      display: flex;
+      align-items: flex-start;
+    }
+    .slot-badge {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #a7f3d0;
+      border: 1px solid rgba(167, 243, 208, 0.35);
+    }
+    .slot-example-top-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .slot-example-bottom-center {
+      display: flex;
+      justify-content: center;
+    }
+    .slot-hint-bottom {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.85);
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+    }
+    .quality-toggle {
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.65);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(6px);
+    }
+    .quality-toggle:hover {
+      background: rgba(30, 30, 30, 0.85);
+    }
+    .quality-toggle[aria-expanded="true"] {
+      background: #2563eb;
+    }
+    .quality-panel {
+      min-width: 160px;
+      max-height: min(280px, 50vh);
+      overflow-y: auto;
+      padding: 8px;
+      border-radius: 8px;
+      background: rgba(15, 15, 15, 0.92);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(8px);
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .quality-panel.is-open {
+      display: flex;
+    }
+    .quality-panel .q-btn {
+      padding: 8px 12px;
+      font-size: 13px;
+      text-align: left;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      color: #eee;
+      cursor: pointer;
+    }
+    .quality-panel .q-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .quality-panel .q-btn.active {
+      border-color: #3b82f6;
+      background: rgba(37, 99, 235, 0.35);
+      color: #fff;
+    }
+    .quality-panel .q-hint {
+      font-size: 12px;
+      color: #999;
+      padding: 4px 4px 0;
+    }
+    @container fp-player (max-width: 520px) {
+      #demo-player .quality-toggle {
+        padding: 5px 10px;
+        font-size: 11px;
+      }
+      #demo-player .quality-panel {
+        min-width: min(160px, 100%);
+        max-width: min(280px, 100%);
+      }
+      #demo-player .quality-panel .q-btn {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+    }
+    @container cq-quality-shell (max-width: 520px) {
+      .player-shell fastpix-player {
+        --user-slot-bottom-clearance: 72px;
+      }
+    }
+    @media (max-width: 520px) {
+      #demo-player {
+        --user-slot-bottom-clearance: 72px;
+      }
+    }
+    /* When video is fullscreen, float this block over the viewport (same subtree issue as external overlays). */
+    .slot-example-top-right.is-fs-overlay {
+      position: fixed;
+      z-index: 2147483000;
+      right: max(10px, env(safe-area-inset-right, 0px));
+      top: max(10px, env(safe-area-inset-top, 0px));
+      align-items: flex-end;
+    }
+    .slot-example-top-right.is-fs-overlay .quality-panel {
+      max-height: min(280px, 42vh);
+    }
+    .slot-example-top-left.is-fs-overlay {
+      position: fixed;
+      z-index: 2147483000;
+      left: max(10px, env(safe-area-inset-left, 0px));
+      top: max(10px, env(safe-area-inset-top, 0px));
+    }
+    .slot-example-bottom-center.is-fs-overlay {
+      position: fixed;
+      z-index: 2147482999;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    }
+    .status {
+      margin-top: 16px;
+      padding: 12px 14px;
+      font-size: 13px;
+      background: #f4f4f5;
+      border-radius: 8px;
+      color: #333;
+      font-family: ui-monospace, monospace;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h1>Custom quality menu + named slots (demo)</h1>
+  <p class="hint">
+    Built-in resolution is hidden (<code>--resolution-selector: none</code>).
+    <strong>Quality</strong> lives in <code>slot="top-right"</code> with
+    <code>getQualityLevels()</code> / <code>setQualityAuto()</code> / <code>setQualityLevel()</code>.
+    Extra regions show <code>slot="top-left"</code> and <code>slot="bottom-center"</code>.
+    See <strong>SLOTS_DEVELOPER_GUIDE.md</strong> and <strong>QUALITY_RESOLUTION_DEVELOPER_GUIDE.md</strong>.
+    For slots-only examples (multiple controls per region, sibling <code>slot</code> assignments), open
+    <strong>demo/slots_demo.html</strong>.
+  </p>
+
+  <div class="player-shell">
+    <fastpix-player
+      id="demo-player"
+      playback-id="your-playback-id"
+      preload="auto"
+      muted
+      metadata-video-title="Custom quality demo"
+    >
+      <div class="slot-example-top-left" slot="top-left">
+        <span class="slot-badge" title="Declarative slot">slot: top-left</span>
+      </div>
+
+      <div class="slot-example-top-right" slot="top-right">
+        <button
+          type="button"
+          id="quality-toggle"
+          class="quality-toggle"
+          aria-expanded="false"
+          aria-controls="quality-panel"
+        >
+          Quality
+        </button>
+        <div
+          id="quality-panel"
+          class="quality-panel"
+          role="region"
+          aria-label="Custom quality options"
+          hidden
+        ></div>
+      </div>
+
+      <div class="slot-example-bottom-center" slot="bottom-center">
+        <span class="slot-hint-bottom">slot: bottom-center (decorative)</span>
+      </div>
+    </fastpix-player>
+  </div>
+
+  <div class="status" id="quality-status">
+    Mode: — · Loaded: — · Locked: —
+  </div>
+
+  <script>
+    customElements.whenDefined("fastpix-player").then(() => {
+      const player = document.getElementById("demo-player");
+      const toggle = document.getElementById("quality-toggle");
+      const panel = document.getElementById("quality-panel");
+      const statusEl = document.getElementById("quality-status");
+      const slotTopRight = document.querySelector(".slot-example-top-right");
+      const slotTopLeft = document.querySelector(".slot-example-top-left");
+      const slotBottomCenter = document.querySelector(".slot-example-bottom-center");
+
+      function getFullscreenElement() {
+        return (
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          null
+        );
+      }
+
+      function isFsInsideOurPlayer() {
+        const fs = getFullscreenElement();
+        if (!fs) return false;
+        if (player === fs) return true;
+        try {
+          return Boolean(player.shadowRoot && player.shadowRoot.contains(fs));
+        } catch {
+          return false;
+        }
+      }
+
+      function syncFullscreenOverlay() {
+        const on = isFsInsideOurPlayer();
+        [slotTopRight, slotTopLeft, slotBottomCenter].forEach((el) => {
+          if (el) el.classList.toggle("is-fs-overlay", on);
+        });
+      }
+
+      ["fullscreenchange", "webkitfullscreenchange"].forEach((ev) => {
+        document.addEventListener(ev, syncFullscreenOverlay);
+      });
+      syncFullscreenOverlay();
+
+      function setPanelOpen(open) {
+        panel.classList.toggle("is-open", open);
+        panel.hidden = !open;
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+
+      toggle.addEventListener("click", () => {
+        setPanelOpen(!panel.classList.contains("is-open"));
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!panel.classList.contains("is-open")) return;
+        const t = e.target;
+        if (panel.contains(t) || toggle.contains(t)) return;
+        setPanelOpen(false);
+      });
+
+      function updateStatus() {
+        try {
+          const q = player.getPlaybackQuality();
+          const mode = q.mode === "auto" ? "auto (ABR)" : "manual";
+          const loaded = q.loadedLevel ? q.loadedLevel.label : "—";
+          const locked =
+            q.mode === "manual" && q.lockedLevel
+              ? q.lockedLevel.label
+              : "—";
+          statusEl.textContent =
+            "Mode: " + mode + " · Loaded: " + loaded + " · Locked: " + locked;
+        } catch (err) {
+          statusEl.textContent = "Status: —";
+        }
+      }
+
+      function syncActiveButtons() {
+        const q = player.getPlaybackQuality();
+        panel.querySelectorAll(".q-btn").forEach((btn) => {
+          btn.classList.remove("active");
+        });
+        if (q.mode === "auto") {
+          const autoBtn = panel.querySelector('.q-btn[data-kind="auto"]');
+          if (autoBtn) autoBtn.classList.add("active");
+        } else if (q.lockedLevel) {
+          const id = String(q.lockedLevel.id);
+          const b = panel.querySelector('.q-btn[data-level-id="' + id + '"]');
+          if (b) b.classList.add("active");
+        }
+      }
+
+      function buildQualityMenu(levels) {
+        panel.textContent = "";
+
+        const autoBtn = document.createElement("button");
+        autoBtn.type = "button";
+        autoBtn.className = "q-btn";
+        autoBtn.dataset.kind = "auto";
+        autoBtn.textContent = "Auto (ABR)";
+        autoBtn.addEventListener("click", () => {
+          player.setQualityAuto();
+          syncActiveButtons();
+        });
+        panel.appendChild(autoBtn);
+
+        if (!levels || levels.length === 0) {
+          const empty = document.createElement("span");
+          empty.className = "q-hint";
+          empty.textContent = "No video renditions (audio-only or single rung).";
+          panel.appendChild(empty);
+          syncActiveButtons();
+          updateStatus();
+          return;
+        }
+
+        levels.forEach((lvl) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "q-btn";
+          b.dataset.levelId = String(lvl.id);
+          b.textContent =
+            lvl.label +
+            (lvl.bitrate ? " · " + Math.round(lvl.bitrate / 1000) + " kbps" : "");
+          b.addEventListener("click", () => {
+            player.setQualityLevel(lvl.id);
+            syncActiveButtons();
+          });
+          panel.appendChild(b);
+        });
+
+        syncActiveButtons();
+        updateStatus();
+      }
+
+      player.addEventListener("fastpixqualitylevelsready", (e) => {
+        const levels = e.detail && e.detail.levels ? e.detail.levels : [];
+        buildQualityMenu(levels);
+      });
+
+      player.addEventListener("fastpixqualitychange", () => {
+        syncActiveButtons();
+        updateStatus();
+      });
+
+      player.addEventListener("fastpixqualityfailed", (e) => {
+        console.warn("fastpixqualityfailed", e.detail);
+        updateStatus();
+      });
+
+      queueMicrotask(() => {
+        const levels = player.getQualityLevels();
+        if (levels.length > 0) {
+          buildQualityMenu(levels);
+        } else {
+          const waiting = document.createElement("span");
+          waiting.className = "q-hint";
+          waiting.textContent = "Waiting for manifest…";
+          panel.appendChild(waiting);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

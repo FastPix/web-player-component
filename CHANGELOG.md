@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.17]
+
+### Custom quality API
+
+- **`getQualityLevels()`** – returns all available renditions (`id`, `label`, `height`, `width`, `bitrate`, `frameRate`).
+- **`setQualityLevel(id)`** – locks playback to a specific rendition (manual mode).
+- **`setQualityAuto()`** – re-enables ABR; clears any manual lock.
+- **`getPlaybackQuality()`** – snapshot of current state: `{ mode, lockedLevel, loadedLevel }`.
+- **`--resolution-selector: none`** – CSS variable to hide the built-in quality button when using a custom menu.
+
+### Quality events
+
+- **`fastpixqualitylevelsready`** – fires after manifest parse; `detail.levels` is the full rendition ladder. Build your quality menu here.
+- **`fastpixqualitychange`** – fires on every ABR or manual switch; `detail` includes `mode`, `lockedLevel`, `loadedLevel`, and `previousLoadedLevel`.
+- **`fastpixqualityfailed`** – fires on invalid `levelId` or rendition load error; `detail.reason` describes the failure.
+
+### Named overlay slots
+
+- Eight slot regions (`top-left`, `top-center`, `top-right`, `center-left`, `center-right`, `bottom-left`, `bottom-center`, `bottom-right`) let you place any HTML over the video as light-DOM children of `<fastpix-player>`.
+- **`--user-slot-z`** – controls stacking order of the slot layer (default `6`).
+- **`--user-slot-bottom-clearance`** – space between bottom-row slots and the seek bar (default `64px`).
+- Shadow part **`part="user-slots"`** exposed for page-level `::part` styling.
+
+
+
 ## [1.0.16]
 
 ### Updated

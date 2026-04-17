@@ -11,6 +11,13 @@ import {
 } from "./ToggleController.js";
 import { documentObject } from "./CustomElements.js";
 import { isChromecastConnected } from "./CastHandler.js";
+import {
+  applyQualityAuto,
+  dispatchFastpixQualityChange,
+  dispatchFastpixQualityFailed,
+  dispatchFastpixQualityLevelsReady,
+  performManualQualitySwitch,
+} from "./qualityResolution.js";
 
 function HlsApi(): any {
   return getHlsConstructor();
@@ -315,6 +322,20 @@ function setupErrorHandling(context: any, streamType: string | null) {
   };
 
   function fatalErrorHandling(context: any, details: any) {
+    const H = HlsApi();
+    if (
+      details === H.ErrorDetails.LEVEL_LOAD_ERROR ||
+      details === H.ErrorDetails.LEVEL_EMPTY_ERROR ||
+      details === H.ErrorDetails.LEVEL_LOAD_TIMEOUT
+    ) {
+      dispatchFastpixQualityFailed(
+        context,
+        String(details),
+        undefined,
+        details
+      );
+    }
+
     // Handle specific fatal key system errors
     if (details === HlsApi().ErrorDetails.KEY_SYSTEM_SESSION_UPDATE_FAILED) {
       showError(
@@ -583,6 +604,8 @@ function handleHlsQualityAndTrackSetup(context: any) {
   context.hls.on(
     HlsApi().Events.MANIFEST_PARSED,
     (_: any, data: { levels: any; audioTracks: any; subtitleTracks: any }) => {
+      context._lastQualityEmitLoadedId = null;
+
       let levelsRetrieved = data.levels;
       const subtitleTracks = data.subtitleTracks;
 
@@ -634,8 +657,19 @@ function handleHlsQualityAndTrackSetup(context: any) {
       } catch (e) {
         console.warn("fastpixtracksready event emission failed:", e);
       }
+
+      try {
+        dispatchFastpixQualityLevelsReady(context);
+        dispatchFastpixQualityChange(context);
+      } catch (e) {
+        console.warn("fastpix quality events emission failed:", e);
+      }
     }
   );
+
+  context.hls.on(HlsApi().Events.LEVEL_SWITCHED, () => {
+    dispatchFastpixQualityChange(context);
+  });
 
   context.hls.on(HlsApi().Events.BUFFER_FLUSHED, () =>
     handleBufferFlushed(context)
@@ -643,6 +677,8 @@ function handleHlsQualityAndTrackSetup(context: any) {
 }
 
 function setupResolutionUI(context: any, levels: any) {
+  context.qualityLevelsOrdered = Array.isArray(levels) ? levels : [];
+
   // Clear previous resolution buttons to avoid duplicates
   if (context.resolutionMenu) {
     while (context.resolutionMenu.firstChild) {
@@ -660,13 +696,7 @@ function setupResolutionUI(context: any, levels: any) {
   }
 
   context.autoResolutionButton = createResolutionButton("Auto", () => {
-    showLoader(context);
-    context.hls.nextLevel = -1; // Enable automatic level selection
-    context.userSelectedLevel = null;
-    setActiveButton(context.autoResolutionButton, [
-      ...context.resolutionButtons,
-      context.autoResolutionButton,
-    ]);
+    applyQualityAuto(context);
     toggleResolutionMenu(context);
   });
 
@@ -703,19 +733,8 @@ function createResolutionButton(label: string, onClick: () => void) {
   return button;
 }
 
-function handleResolutionSwitch(context: any, index: number, height: any) {
-  context.resolutionSwitching = true;
-  context.wasPausedBeforeSwitch = context.video.paused;
-
-  if (!context.wasPausedBeforeSwitch) {
-    context.video.pause(); // Pause video during resolution switch
-    showLoader(context);
-  }
-
-  context.resolutionFlagPause = true;
-  context.isBufferFlushed = false;
-  context.hls.currentLevel = index; // Set to the selected resolution level
-  context.userSelectedLevel = index; // Update user-selected level
+function handleResolutionSwitch(context: any, index: number, _height: any) {
+  performManualQualitySwitch(context, index);
 
   setActiveButton(context.resolutionButtons[index], [
     ...context.resolutionButtons,
@@ -723,6 +742,7 @@ function handleResolutionSwitch(context: any, index: number, height: any) {
   ]);
 
   toggleResolutionMenu(context);
+  dispatchFastpixQualityChange(context);
 }
 
 /**

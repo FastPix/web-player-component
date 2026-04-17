@@ -30,6 +30,10 @@ export const skeleton: string = `
     --previous-episode-button: flex;
     --shoppable-sidebar-width: 30%;
     --shoppable-sidebar-background-color: rgba(255, 255, 255, 0.75);
+    /* User slot overlay (see SLOTS_DEVELOPER_GUIDE.md) */
+    --user-slot-z: 6;
+    /* Avoid vh in default — mobile URL bar and early layout make vh-based padding jump. Override per app. */
+    --user-slot-bottom-clearance: 64px;
     --play-button-initialized: flex;
     --mobile-play-button: flex;
     --mobile-play-button-initialized: flex;
@@ -39,6 +43,9 @@ export const skeleton: string = `
     display: block; /* Ensure the custom element is a block-level element */
     font-family: Arial, sans-serif;
     aspect-ratio: var(--aspect-ratio); /* Use the aspect ratio variable */
+    /* Lets page CSS and integrators use @container queries against player width (not just the viewport). */
+    container-type: inline-size;
+    container-name: fp-player;
 }
 
 :host(:focus) {
@@ -76,6 +83,120 @@ google-cast-launcher {
     height: 100%;
     z-index: 1;
     pointer-events: none; /* Allow clicks to pass through the overlay to the video */
+}
+
+/* Declarative slots: light-DOM children with slot="top-right" (etc.) compose here. */
+.fastpix-user-slots {
+    position: absolute;
+    inset: 0;
+    z-index: var(--user-slot-z, 6);
+    pointer-events: none;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    box-sizing: border-box;
+    padding: 8px 8px calc(8px + var(--user-slot-bottom-clearance, 64px)) 8px;
+    transition: none;
+}
+
+.fastpix-slot-region {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 6px;
+    max-width: 100%;
+    min-width: 0; /* allow shrinking inside grid / flex so slotted UI can respond to narrow hosts */
+    pointer-events: none;
+}
+
+.fastpix-slot-region ::slotted(*) {
+    pointer-events: auto;
+}
+
+.fastpix-slot-top-left {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    justify-self: start;
+}
+
+.fastpix-slot-top-center {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    justify-self: center;
+    justify-content: center;
+}
+
+.fastpix-slot-top-right {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: start;
+    justify-self: end;
+    justify-content: flex-end;
+}
+
+.fastpix-slot-center-left {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: center;
+    justify-self: start;
+    align-content: center;
+}
+
+.fastpix-slot-center-right {
+    grid-column: 3;
+    grid-row: 2;
+    align-self: center;
+    justify-self: end;
+    justify-content: flex-end;
+    align-content: center;
+}
+
+.fastpix-slot-bottom-left {
+    grid-column: 1;
+    grid-row: 3;
+    align-self: end;
+    justify-self: start;
+    align-items: flex-end;
+}
+
+.fastpix-slot-bottom-center {
+    grid-column: 2;
+    grid-row: 3;
+    align-self: end;
+    justify-self: center;
+    justify-content: center;
+    align-items: flex-end;
+}
+
+.fastpix-slot-bottom-right {
+    grid-column: 3;
+    grid-row: 3;
+    align-self: end;
+    justify-self: end;
+    justify-content: flex-end;
+    align-items: flex-end;
+}
+
+/* Narrow player: tighter slot chrome (uses host container from :host). */
+@container fp-player (max-width: 520px) {
+    .fastpix-user-slots {
+        padding: 5px 5px calc(5px + var(--user-slot-bottom-clearance, 64px)) 5px;
+    }
+    .fastpix-slot-region {
+        gap: 4px;
+    }
+}
+
+@container fp-player (max-width: 380px) {
+    .fastpix-user-slots {
+        padding: 3px 3px calc(3px + var(--user-slot-bottom-clearance, 64px)) 3px;
+    }
+    .fastpix-slot-region {
+        gap: 3px;
+    }
 }
 
 .overlay-show {
@@ -422,7 +543,8 @@ video::-webkit-media-text-track-display {
     row-gap: 1.875rem;
     height: 100%;
     overflow: hidden;               /* Keep gradient inside rounded corners */
-    transition: all 1s ease-in-out;  /* Smooth resizing */
+    /* Do not transition layout properties: animating width/height on load made absolute overlays (user slots) drift. */
+    transition: none;
 }
 
 .parent::after {

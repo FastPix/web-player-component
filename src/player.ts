@@ -47,6 +47,12 @@ import {
   startFragPrefetchForStreamType,
 } from "./utils/HlsManager";
 import {
+  applyQualityAuto,
+  getFormattedQualityLevels,
+  getPlaybackQualityState,
+  setQualityLevelForContext,
+} from "./utils/qualityResolution";
+import {
   configureForiOS,
   restoreVolumeSettings,
 } from "./utils/VolumeController";
@@ -95,6 +101,22 @@ import {
 } from "./utils/ShoppableVideo";
 import { resizeVideoWidth } from "./utils/ResizeVideo";
 import { initPlaylistControls } from "./utils/PlaylistHandler";
+
+/**
+ * Run as soon as the bundle loads (before the class body) so `:not(:defined)` hides
+ * slottables before first paint when possible.
+ */
+function installFastpixSlotFoucGuard() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById("fastpix-ce-slot-fouc")) return;
+  const s = document.createElement("style");
+  s.id = "fastpix-ce-slot-fouc";
+  s.textContent =
+    "fastpix-player:not(:defined) > * { display: none !important; }";
+  document.head.appendChild(s);
+}
+
+installFastpixSlotFoucGuard();
 
 // Shoppable types
 type ShoppableSidebarConfig = {
@@ -306,6 +328,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
   playlistItems?: HTMLDivElement;
   externalPlaylistOpen: boolean = false;
   playlistSlot?: HTMLDivElement;
+  /** Shadow overlay with named `slot` regions for custom buttons/UI (see SLOTS_DEVELOPER_GUIDE.md). */
+  userSlotsOverlay!: HTMLElement;
   cartButton!: HTMLButtonElement;
   cartSidebar!: HTMLDivElement;
   isCartOpen: boolean = false;
@@ -557,6 +581,32 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.videoOverLay.className = "video-overlay";
     this.wrapper.appendChild(this.video);
     this.wrapper.appendChild(this.videoOverLay);
+
+    this.userSlotsOverlay = documentObject.createElement("div");
+    this.userSlotsOverlay.className = "fastpix-user-slots";
+    this.userSlotsOverlay.setAttribute("part", "user-slots");
+    this.userSlotsOverlay.setAttribute("aria-hidden", "true");
+    const userSlotNames = [
+      "top-left",
+      "top-center",
+      "top-right",
+      "center-left",
+      "center-right",
+      "bottom-left",
+      "bottom-center",
+      "bottom-right",
+    ] as const;
+    for (const slotName of userSlotNames) {
+      const region = documentObject.createElement("div");
+      region.className = `fastpix-slot-region fastpix-slot-${slotName}`;
+      region.setAttribute("data-slot", slotName);
+      const slotEl = documentObject.createElement("slot");
+      slotEl.name = slotName;
+      region.appendChild(slotEl);
+      this.userSlotsOverlay.appendChild(region);
+    }
+    this.wrapper.appendChild(this.userSlotsOverlay);
+
     this.pipButton = documentObject.createElement("button");
     this.pipButton.className = "pipButton";
     this.pipButton.innerHTML = PipIcon;
@@ -2163,6 +2213,15 @@ class FastPixPlayer extends windowObject.HTMLElement {
     return this.videoOverLay ?? null;
   }
 
+  /**
+   * Returns the overlay that hosts declarative **named slots** (`slot="top-right"`, etc.).
+   * Prefer adding children to `fastpix-player` in HTML with `slot="…"`; use this for
+   * programmatic access (e.g. advanced styling via shadow `part="user-slots"`).
+   */
+  public getUserSlotsOverlay(): HTMLElement | null {
+    return this.userSlotsOverlay ?? null;
+  }
+
   public setNextHandler(handler: (ctx: any) => void) {
     if (typeof handler === "function") {
       this.customNext = handler;
@@ -2422,6 +2481,36 @@ class FastPixPlayer extends windowObject.HTMLElement {
     if (this.subtitleMenu && this.subtitleMenu.style?.display !== "none") {
       this.subtitleMenu.style.display = "none";
     }
+  }
+
+  /**
+   * Returns HLS video quality levels from the manifest (UI order, `rendition-order` respected).
+   * Empty array for audio-only or non-multivariant streams.
+   */
+  public getQualityLevels() {
+    return getFormattedQualityLevels(this);
+  }
+
+  /**
+   * Locks playback to one rendition by hls.js level index (`id` from `getQualityLevels()`).
+   * Does not change `streamUrl`; uses the same path as the built-in resolution menu.
+   */
+  public setQualityLevel(levelId: number) {
+    setQualityLevelForContext(this, levelId);
+  }
+
+  /**
+   * Enables adaptive bitrate (Auto) and clears a manual lock — same as the built-in Auto control.
+   */
+  public setQualityAuto() {
+    applyQualityAuto(this);
+  }
+
+  /**
+   * Current mode (auto vs manual), locked level, and actually loaded level for custom quality UIs.
+   */
+  public getPlaybackQuality() {
+    return getPlaybackQualityState(this);
   }
 }
 

@@ -475,7 +475,7 @@ function customizeThumbnail(context: any) {
     context.video.poster = context.placeholderAttribute;
   }
 
-  const token = context.getAttribute("token");
+  const token = context.thumbnailToken;
   const hasThumbnailTime = context.hasAttribute("thumbnail-time");
   const playbackId = context.playbackId as string | null | undefined;
 
