@@ -49,7 +49,62 @@ interface ThumbnailJson {
   url: string;
   tile_width: number;
   tile_height: number;
+  // Full sheet dimensions, derived up-front so hover previews can size the
+  // background-image before the spritesheet image finishes downloading.
+  sheet_width: number;
+  sheet_height: number;
   tiles: Array<{ start: number; x: number; y: number }>;
+}
+
+// The images API has two response shapes:
+//   1. Legacy: tile_width / tile_height / tiles[] (explicit tile list)
+//   2. Grid:   tileWidth / tileHeight / columns / rows / interval (uniform grid)
+// Normalize both into the legacy shape so downstream code is schema-agnostic.
+function normalizeThumbnailJson(raw: any): ThumbnailJson | null {
+  if (Array.isArray(raw.tiles) && raw.tiles.length > 0) {
+    const tileWidth = raw.tile_width ?? raw.tileWidth ?? 0;
+    const tileHeight = raw.tile_height ?? raw.tileHeight ?? 0;
+    let sheetWidth = Number(raw.sheetWidth) || 0;
+    let sheetHeight = Number(raw.sheetHeight) || 0;
+    if (!sheetWidth || !sheetHeight) {
+      for (const t of raw.tiles) {
+        if (t.x + tileWidth > sheetWidth) sheetWidth = t.x + tileWidth;
+        if (t.y + tileHeight > sheetHeight) sheetHeight = t.y + tileHeight;
+      }
+    }
+    return {
+      url: typeof raw.url === "string" ? raw.url : "",
+      tile_width: tileWidth,
+      tile_height: tileHeight,
+      sheet_width: sheetWidth,
+      sheet_height: sheetHeight,
+      tiles: raw.tiles,
+    };
+  }
+  const cols = Number(raw.columns);
+  const interval = Number(raw.interval);
+  const tileWidth = Number(raw.tileWidth ?? raw.tile_width);
+  const tileHeight = Number(raw.tileHeight ?? raw.tile_height);
+  if (!cols || !interval || !tileWidth || !tileHeight) return null;
+  const count = Number(raw.thumbnailCount) || cols * Number(raw.rows ?? 0);
+  if (!count) return null;
+  const tiles: Array<{ start: number; x: number; y: number }> = [];
+  for (let i = 0; i < count; i++) {
+    tiles.push({
+      start: i * interval,
+      x: (i % cols) * tileWidth,
+      y: Math.floor(i / cols) * tileHeight,
+    });
+  }
+  return {
+    url: typeof raw.url === "string" ? raw.url : "",
+    tile_width: tileWidth,
+    tile_height: tileHeight,
+    sheet_width: Number(raw.sheetWidth) || cols * tileWidth,
+    sheet_height:
+      Number(raw.sheetHeight) || Math.ceil(count / cols) * tileHeight,
+    tiles,
+  };
 }
 
 // Cache management
@@ -63,19 +118,32 @@ async function fetchThumbnailJson(
     return null;
   }
 
-  if (context.spritesheetCache?.[playbackId]) {
-    return context.spritesheetCache[playbackId];
+  const variant = context.useAdvancedSpritesheet
+    ? "advanced-spritesheet"
+    : "spritesheet";
+  // Only advanced sheets honor the interval query parameter; the normal
+  // endpoint ignores it. Treat missing/invalid as "let the API default".
+  const interval =
+    variant === "advanced-spritesheet" &&
+    typeof context.advancedSpritesheetInterval === "number"
+      ? context.advancedSpritesheetInterval
+      : null;
+  const cacheKey = `${playbackId}:${variant}:${interval ?? "default"}`;
+
+  if (context.spritesheetCache?.[cacheKey]) {
+    return context.spritesheetCache[cacheKey];
   }
 
   context.spritesheetCache ??= {};
 
   try {
-    let spritesheetUrl = `${spritesheetSrc}/${playbackId}/spritesheet.json`;
-
+    const params = new URLSearchParams();
     const token = context.token;
-    if (token) {
-      spritesheetUrl += `?token=${token}`;
-    }
+    if (token) params.set("token", token);
+    if (interval != null) params.set("interval", String(interval));
+    const qs = params.toString();
+    const query = qs ? `?${qs}` : "";
+    const spritesheetUrl = `${spritesheetSrc}/${playbackId}/${variant}.json${query}`;
 
     const response = await fetch(spritesheetUrl);
     if (!response.ok) {
@@ -85,8 +153,32 @@ async function fetchThumbnailJson(
       return null;
     }
 
-    const thumbnailJson: ThumbnailJson = await response.json();
-    context.spritesheetCache[playbackId] = thumbnailJson;
+    const raw: any = await response.json();
+    if (!raw || typeof raw !== "object") {
+      console.warn(
+        `Spritesheet JSON empty for ${spritesheetUrl}; skipping hover previews.`
+      );
+      return null;
+    }
+    const thumbnailJson = normalizeThumbnailJson(raw);
+    if (
+      !thumbnailJson ||
+      !Array.isArray(thumbnailJson.tiles) ||
+      thumbnailJson.tiles.length === 0
+    ) {
+      console.warn(
+        `Spritesheet JSON missing tiles for ${spritesheetUrl}; skipping hover previews.`
+      );
+      return null;
+    }
+    // The API has been observed to return URLs with stray double slashes and
+    // case mismatches (e.g. "advanced-Spritesheet.jpg") that 404. Rebuild the
+    // image URL deterministically from the same endpoint we just fetched.
+    // Carry the interval onto the image URL so the JPEG matches the JSON's
+    // tile schedule (the API serves a different sheet per interval).
+    const imageQuery = interval != null ? `?interval=${interval}` : "";
+    thumbnailJson.url = `${spritesheetSrc}/${playbackId}/${variant}.jpg${imageQuery}`;
+    context.spritesheetCache[cacheKey] = thumbnailJson;
     return thumbnailJson;
   } catch (error) {
     console.error("Error fetching spritesheet:", error);
@@ -355,23 +447,29 @@ function updateThumbnailBackground(
   const currentTile = findCurrentTile(thumbnailJson, currentTime);
   if (currentTile) {
     const { scalingFactor } = dimensions;
+    // Prefer sheet dimensions from the JSON so the background can be sized
+    // before the image finishes downloading. Fall back to natural image size
+    // only if the JSON didn't carry sheet dimensions.
+    const sheetWidth =
+      thumbnailJson.sheet_width || context.spritesheetImage?.width || 0;
+    const sheetHeight =
+      thumbnailJson.sheet_height || context.spritesheetImage?.height || 0;
     context.thumbnail.style.backgroundImage = `url(${thumbnailUrl})`;
     context.thumbnail.style.backgroundPosition = `-${
       currentTile.x * scalingFactor
     }px -${currentTile.y * scalingFactor}px`;
     context.thumbnail.style.backgroundSize = `${
-      context.spritesheetImage.width * scalingFactor
-    }px ${context.spritesheetImage.height * scalingFactor}px`;
+      sheetWidth * scalingFactor
+    }px ${sheetHeight * scalingFactor}px`;
   }
 }
 
 function findCurrentTile(thumbnailJson: ThumbnailJson, currentTime: number) {
-  for (let i = 0; i < thumbnailJson.tiles.length - 1; i++) {
-    if (
-      thumbnailJson.tiles[i].start <= currentTime &&
-      thumbnailJson.tiles[i + 1].start > currentTime
-    ) {
-      return thumbnailJson.tiles[i];
+  const tiles = thumbnailJson?.tiles;
+  if (!Array.isArray(tiles) || tiles.length === 0) return null;
+  for (let i = 0; i < tiles.length - 1; i++) {
+    if (tiles[i].start <= currentTime && tiles[i + 1].start > currentTime) {
+      return tiles[i];
     }
   }
   return null;
@@ -419,6 +517,11 @@ async function thumbnailSeeking(
   if (thumbnailUrl) {
     spritesheetImage.src = thumbnailUrl;
     context.spritesheetImage = spritesheetImage;
+    // Size the pill from the JSON immediately so hover renders correctly even
+    // before the image bytes arrive. The browser will paint each tile region
+    // as soon as the image is decoded.
+    context.thumbnail.style.width = `${dimensions.width}px`;
+    context.thumbnail.style.height = `${dimensions.height}px`;
   }
 
   const showThumbnailHandler = createThumbnailHandler(
@@ -428,16 +531,15 @@ async function thumbnailSeeking(
     thumbnailUrl
   );
 
+  // Attach hover listeners immediately so the seekbar is interactive without
+  // waiting for the (potentially multi-MB) spritesheet image to download.
+  attachProgressBarListeners(
+    context,
+    showThumbnailHandler,
+    context.controlsContainer.querySelector(".seekbarPin")
+  );
+
   if (thumbnailUrl) {
-    spritesheetImage.onload = () => {
-      context.thumbnail.style.width = `${dimensions.width}px`;
-      context.thumbnail.style.height = `${dimensions.height}px`;
-      attachProgressBarListeners(
-        context,
-        showThumbnailHandler,
-        context.controlsContainer.querySelector(".seekbarPin")
-      );
-    };
     spritesheetImage.onerror = () => {
       console.debug(
         "[thumbnailSeeking] Spritesheet image failed; using timestamp-only preview on hover."
@@ -460,12 +562,6 @@ async function thumbnailSeeking(
         context.controlsContainer.querySelector(".seekbarPin")
       );
     };
-  } else {
-    attachProgressBarListeners(
-      context,
-      showThumbnailHandler,
-      context.controlsContainer.querySelector(".seekbarPin")
-    );
   }
 }
 
@@ -498,9 +594,10 @@ function customizeThumbnail(context: any) {
     return url;
   };
 
-  const resolvedBase =
-    normalizePosterBase(context.thumbnailUrlAttribute) ||
-    normalizePosterBase(context.thumbnailUrlFinal);
+  // Prefer thumbnailUrlFinal: it normalizes the user-supplied spritesheet-src
+  // (e.g. "images.fastpix.co") into an absolute https URL. Using the raw
+  // attribute here caused the browser to treat it as a relative path.
+  const resolvedBase = normalizePosterBase(context.thumbnailUrlFinal);
 
   if (resolvedBase && playbackId && !context.posterAttribute) {
     const thumbnailUrl = buildThumbnailUrl(resolvedBase);

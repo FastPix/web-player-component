@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.18]
+
+### Spritesheet hover previews
+
+- **`spritesheet-src`** – overrides the host that serves the hover-preview spritesheet and poster `thumbnail.jpg`. Defaults to `images.fastpix.io`. Accepts a bare host (e.g. `images.fastpix.co`) or a full URL; trailing slashes are stripped and `https://` is added when no scheme is supplied. Previously a bare host was concatenated as a relative path against the page origin, producing 404s like `http://<your-site>/images.fastpix.co/<id>/thumbnail.jpg`.
+- **`enable-advanced-spritesheet`** – boolean. Switches hover previews from the default sheet to the higher-density advanced sheet (`advanced-spritesheet.json/.jpg`). More frame-accurate scrubbing at the cost of a larger image download.
+- **`advanced-spritesheet-interval`** – integer `1`–`10`. Seconds between consecutive tiles on the advanced spritesheet (passed as `?interval=N` on the JSON and JPG requests). Out-of-range or non-numeric values are ignored and the API default of `10` is used. Has no effect unless `enable-advanced-spritesheet` is also present.
+
+### Hover preview reliability
+
+- **Instant interactivity** – the seekbar's hover/scrub listeners now attach as soon as the spritesheet JSON arrives, instead of waiting for the entire spritesheet image (which can be several megabytes for the advanced variant) to finish downloading. The timestamp pill follows the cursor immediately; the frame fills in as the image streams.
+- **Tile dimensions derived from JSON** – `backgroundSize` is now computed from the sheet's declared dimensions rather than `image.naturalWidth`, so previews render correctly the first time, not only after the image fully decodes.
+- **Two JSON schemas supported** – `fetchThumbnailJson` now normalizes both the legacy `tiles[]` response and the newer grid response (`columns`, `rows`, `interval`, `tileWidth`, `tileHeight`) into a single shape. The grid variant was previously rejected as malformed and fell back to timestamp-only previews.
+- **Deterministic image URL** – the spritesheet image URL is reconstructed from the playback ID and variant rather than trusted from the JSON's `url` field, working around upstream responses that occasionally return a mis-cased filename (`advanced-Spritesheet.jpg`) that 404s on the CDN.
+- **Cache key includes variant and interval** – switching between normal and advanced spritesheets, or between intervals, no longer serves a stale cached JSON.
+- **Safer tile lookup** – `findCurrentTile` guards against missing or empty `tiles` so an unexpected response shape can no longer throw `Cannot read properties of undefined (reading 'length')` during hover.
+
 ## [1.0.17]
 
 ### Custom quality API

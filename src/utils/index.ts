@@ -685,8 +685,25 @@ function receiveAttributes(context: any) {
   context.posterAttribute = context.getAttribute("poster");
   context.placeholderAttribute = context.getAttribute("placeholder");
   context.thumbnailUrlAttribute = context.getAttribute("spritesheet-src");
-  const baseUrl = context?.thumbnailUrlAttribute ?? "images.fastpix.io";
-  context.thumbnailUrlFinal = `https://${baseUrl}`;
+  const rawBase = (context.thumbnailUrlAttribute ?? "images.fastpix.io")
+    .trim()
+    .replace(/\/+$/, "");
+  context.thumbnailUrlFinal = /^https?:\/\//i.test(rawBase)
+    ? rawBase
+    : `https://${rawBase.replace(/^\/+/, "")}`;
+  context.useAdvancedSpritesheet = context.hasAttribute(
+    "enable-advanced-spritesheet"
+  );
+  // Optional interval (seconds between tiles) for the advanced spritesheet.
+  // The API supports 1–10s and defaults to 10 when omitted, so we only
+  // forward the parameter if the user explicitly set it.
+  const rawInterval = context.getAttribute("advanced-spritesheet-interval");
+  if (rawInterval != null) {
+    const parsed = Math.floor(Number(rawInterval));
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 10) {
+      context.advancedSpritesheetInterval = parsed;
+    }
+  }
 
   // playbackrates
   context.playbackRatesAttribute = context.getAttribute("playback-rates");

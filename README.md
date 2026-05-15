@@ -825,6 +825,34 @@ The `thumbnail-time` attribute in <fastpix-player> allows you to specify a parti
 <fastpix-player playback-id="playback-id" thumbnail-time={8}></fastpix-player>
 ```
 
+### spritesheet-src:
+
+The `spritesheet-src` attribute overrides the host that serves the seekbar hover-preview spritesheet and the poster `thumbnail.jpg`. Defaults to `images.fastpix.io`. Accepts a bare host (e.g. `images.fastpix.co`) or a fully-qualified URL (`https://images.example.com`). Trailing slashes are ignored; if no scheme is provided, `https://` is prepended.
+
+```html
+<fastpix-player playback-id="playback-id" spritesheet-src="images.fastpix.co"></fastpix-player>
+```
+
+### enable-advanced-spritesheet:
+
+Boolean attribute that switches hover previews from the default sheet (`spritesheet.json/.jpg`) to the higher-density advanced sheet (`advanced-spritesheet.json/.jpg`). The advanced sheet has many more tiles per video so scrubbing is more frame-accurate, at the cost of a larger image download.
+
+```html
+<fastpix-player playback-id="playback-id" enable-advanced-spritesheet></fastpix-player>
+```
+
+### advanced-spritesheet-interval:
+
+Sets the gap (in seconds) between consecutive tiles on the advanced spritesheet. Integer from `1` to `10`; values outside that range — or non-numeric values — are ignored and the API's default of `10` is used. Has no effect unless `enable-advanced-spritesheet` is also present. Smaller intervals give finer-grained previews but produce larger spritesheet images.
+
+```html
+<fastpix-player
+  playback-id="playback-id"
+  enable-advanced-spritesheet
+  advanced-spritesheet-interval="1"
+></fastpix-player>
+```
+
 ## Keyboard Navigation and Accessibility:
 Customize keyboard shortcuts with `hot-keys` for efficient video control and use `disable-keyboard-controls` to disable keyboard interactions for enhanced accessibility or specific use cases.
 
