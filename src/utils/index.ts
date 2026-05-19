@@ -685,7 +685,7 @@ function receiveAttributes(context: any) {
   context.posterAttribute = context.getAttribute("poster");
   context.placeholderAttribute = context.getAttribute("placeholder");
   context.thumbnailUrlAttribute = context.getAttribute("spritesheet-src");
-  const rawBase = (context.thumbnailUrlAttribute ?? "images.fastpix.io")
+  const rawBase = (context.thumbnailUrlAttribute ?? "images.fastpix.com")
     .trim()
     .replace(/\/+$/, "");
   context.thumbnailUrlFinal = /^https?:\/\//i.test(rawBase)
@@ -767,11 +767,11 @@ function receiveAttributes(context: any) {
 function DrmSetup(context: any) {
   // Set up drmSystems config before creating Hls
   context.config.drmSystems["com.widevine.alpha"].licenseUrl =
-    `https://api.fastpix.io/v1/on-demand/drm/license/widevine/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.com/v1/on-demand/drm/license/widevine/${context.playbackId}?token=${context.drmToken}`;
   context.config.drmSystems["com.apple.fps"].licenseUrl =
-    `https://api.fastpix.io/v1/on-demand/drm/license/fairplay/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.com/v1/on-demand/drm/license/fairplay/${context.playbackId}?token=${context.drmToken}`;
   context.config.drmSystems["com.apple.fps"].serverCertificateUrl =
-    `https://api.fastpix.io/v1/on-demand/drm/cert/fairplay/${context.playbackId}?token=${context.drmToken}`;
+    `https://api.fastpix.com/v1/on-demand/drm/cert/fairplay/${context.playbackId}?token=${context.drmToken}`;
 }
 
 export {

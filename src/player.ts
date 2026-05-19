@@ -1323,7 +1323,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     if (isSupportedStream) {
       playbackUrlFinal = customDomain
         ? `https://stream.${customDomain}`
-        : "https://stream.fastpix.io";
+        : "https://stream.fastpix.com";
     }
 
     if (options?.drmToken) {
@@ -1649,7 +1649,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
       ) {
         playbackUrlFinal = customDomain
           ? `https://stream.${customDomain}`
-          : "https://stream.fastpix.io";
+          : "https://stream.fastpix.com";
       }
 
       let isDrm = false;

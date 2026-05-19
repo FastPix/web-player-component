@@ -512,7 +512,7 @@ function bindCartButtonToggle(context: any) {
     e.stopPropagation();
     const theme = context.getAttribute ? context.getAttribute("theme") : null;
     if (theme === "shoppable-shorts") {
-      const goto = context.cartGotoLink || "https://www.fastpix.io";
+      const goto = context.cartGotoLink || "https://www.fastpix.com";
       window.open(goto, "_blank", "noopener,noreferrer");
       return;
     }
@@ -786,7 +786,7 @@ function shoppableTheme(context: any) {
       context.cartButton.onclick = (e: any) => {
         e.stopPropagation();
         if (context.getAttribute("theme") === "shoppable-shorts") {
-          const goto = context.cartGotoLink || "https://www.fastpix.io";
+          const goto = context.cartGotoLink || "https://www.fastpix.com";
           window.open(goto, "_blank", "noopener,noreferrer");
           return;
         }

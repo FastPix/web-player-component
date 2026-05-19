@@ -169,7 +169,7 @@ async function changePlaybackId(newPlaybackId: string, context: any) {
     ) {
       playbackUrlFinal = customDomain
         ? `https://stream.${customDomain}`
-        : "https://stream.fastpix.io";
+        : "https://stream.fastpix.com";
     }
 
     // updating stream with new playback-id

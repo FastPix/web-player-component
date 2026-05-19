@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.19]
+
+### Domain migration: `fastpix.io` → `fastpix.com`
+
+All first-party endpoints baked into the player have moved from the `.io` TLD to `.com`. No attribute changes are required — existing integrations that rely on the built-in defaults will start hitting the new hosts on upgrade.
+
+- **HLS playback host** – default stream base changed from `https://stream.fastpix.io` to `https://stream.fastpix.com` for both on-demand and live streams, and for episode switching in the playlist flow.
+- **DRM endpoints** – Widevine license, FairPlay license, and FairPlay certificate URLs now resolve under `https://api.fastpix.com/v1/on-demand/drm/...` (previously `api.fastpix.io`).
+- **Spritesheet / poster host** – `spritesheet-src` default updated from `images.fastpix.io` to `images.fastpix.com`. Consumers that explicitly set `spritesheet-src` are unaffected.
+- **Shoppable cart fallback** – when `cart-goto-link` is not provided, the cart CTA now links to `https://www.fastpix.com` instead of `https://www.fastpix.io`.
+
+> **Note:** the `.io` hosts continue to serve traffic for now and existing integrations will keep working, but they are slated for deprecation — please migrate to `.com`. The `images.fastpix.io` default referenced in the 1.0.18 entry below is now `images.fastpix.com`.
+
 ## [1.0.18]
 
 ### Spritesheet hover previews
