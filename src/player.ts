@@ -157,7 +157,7 @@ function computeInitialIndexForPlaylist(self: any): number {
   const preferredIndex = self.playlist.findIndex(
     (p: any) => p.playbackId === preferredPlaybackId
   );
-  return preferredIndex >= 0 ? preferredIndex : 0;
+  return Math.max(preferredIndex, 0);
 }
 
 function updateInitialPlayButtonVisibility(self: any): void {
@@ -205,6 +205,279 @@ function loadCurrentPlaylistItemAndRender(self: any): void {
   ) {
     renderPlaylistPanel(self);
   }
+}
+
+// Render (or clear) the built-in subtitle container for the active cue.
+// hide-native-subtitles keeps the container empty even when subtitles are on.
+function updateNativeSubtitleContainer(self: any, track: TextTrack): void {
+  const container = self.subtitleContainer;
+
+  if (self.hasAttribute("hide-native-subtitles")) {
+    container.innerHTML = "";
+    container.classList.remove("contained");
+    return;
+  }
+
+  const cue =
+    track.activeCues && track.activeCues.length > 0
+      ? track.activeCues[0]
+      : null;
+
+  if (cue && self.initialPlayClick) {
+    container.innerHTML = (cue as any).text ?? "";
+    container.classList.add("contained");
+  } else {
+    container.innerHTML = "";
+    container.classList.remove("contained");
+  }
+}
+
+// Emit fastpixsubtitlecue with the current cue text/timing so external UIs can render.
+function dispatchSubtitleCue(self: any, track: TextTrack): void {
+  try {
+    const activeText =
+      track.activeCues && track.activeCues.length > 0
+        ? (((track.activeCues[0] as any).text as string) ?? "")
+        : "";
+    const activeCue = track.activeCues ? (track.activeCues[0] as any) : null;
+
+    self.dispatchEvent(
+      new CustomEvent("fastpixsubtitlecue", {
+        detail: {
+          text: activeText,
+          language: track.language || undefined,
+          startTime:
+            typeof activeCue?.startTime === "number"
+              ? activeCue.startTime
+              : undefined,
+          endTime:
+            typeof activeCue?.endTime === "number"
+              ? activeCue.endTime
+              : undefined,
+        },
+      })
+    );
+  } catch {
+    // ignore subtitle cue dispatch errors
+  }
+}
+
+// Parse the playback-rates attribute (or default set) and build the rate-menu buttons.
+function setupPlaybackRates(self: any): void {
+  if (self.playbackRatesAttribute === null) {
+    self.playbackRates = [1, 1.2, 1.5, 1.7, 2];
+  } else {
+    const parsedPlaybackRates = self.playbackRatesAttribute
+      .split(" ")
+      .map((rate: string) => Number.parseFloat(rate));
+
+    const uniquePlaybackRates = [...new Set(parsedPlaybackRates)];
+    self.playbackRates.splice(
+      0,
+      self.playbackRates.length,
+      ...uniquePlaybackRates
+    );
+  }
+
+  self.playbackRateDiv = documentObject.createElement("div");
+  self.playbackRateDiv.className = "playbackRate-menu";
+  self.playbackRateDiv.style.display = "none";
+
+  const defaultRate = parseAndSetDefaultPlaybackRate(
+    self.defaultPlaybackRateAttribute
+  );
+  if (defaultRate) {
+    self.defaultPlaybackRate = defaultRate;
+  }
+
+  self.playbackRates.forEach((rate: any) => {
+    const button = documentObject.createElement("button");
+    button.style.padding = "5px 6px";
+    button.textContent = `${rate}x`;
+    button.title = `${rate}x`;
+    button.className = "playbackRateButton";
+
+    // Pre-select default as active before any click
+    if (String(rate) === String(self.defaultPlaybackRate)) {
+      button.classList.add("active");
+      self.lastClickedPlaybackRateButton = button;
+    }
+
+    button.addEventListener("click", () => {
+      // Ensure any previously active buttons are cleared before applying
+      try {
+        const all = self.playbackRateDiv?.querySelectorAll(
+          ".playbackRateButton.active"
+        );
+        all?.forEach((el: Element) => el.classList.remove("active"));
+      } catch {}
+      setPlaybackRate(self, rate, button);
+    });
+
+    self.playbackRateDiv?.appendChild(button);
+  });
+}
+
+// Build the default playlist panel, or an internal slot container when the
+// default panel is hidden (so user-provided panels live inside the player).
+function setupPlaylistPanel(self: any): void {
+  if (!self.hideDefaultPlaylistPanel) {
+    self.playlistPanel = document.createElement("div");
+    self.playlistPanel.className = "playlist-panel";
+    self.playlistPanel.style.maxHeight = "400px";
+
+    const header = document.createElement("div");
+    header.className = "playlist-header";
+    header.textContent = "Episode List";
+
+    self.playlistItems = document.createElement("div");
+    self.playlistItems.className = "playlist-items-wrapper";
+
+    self.playlistPanel.appendChild(header);
+    self.bottomRightDiv.appendChild(self.playlistPanel);
+    return;
+  }
+
+  // Create an internal slot container so user panels live inside fullscreen element
+  self.playlistSlot = document.createElement("div");
+  self.playlistSlot.className = "playlist-slot";
+  // Minimal defaults; positioned relative to controls container
+  self.playlistSlot.style.position = "absolute";
+  self.playlistSlot.style.top = "0";
+  self.playlistSlot.style.left = "0";
+  self.playlistSlot.style.right = "0";
+  self.playlistSlot.style.bottom = "0";
+  self.playlistSlot.style.opacity = "0";
+  self.playlistSlot.style.transition = "opacity 0.9s ease";
+  self.playlistSlot.style.pointerEvents = "none";
+  self.playlistSlot.style.zIndex = "9999";
+  self.controlsContainer.appendChild(self.playlistSlot);
+
+  // Move any declarative slotted children into the slot container
+  const slotted = Array.from(self.children).filter((el: any) => {
+    const slotAttr = el.getAttribute("slot");
+    const dataSlot = el.dataset.fastpixSlot;
+    return slotAttr === "playlist-panel" || dataSlot === "playlist-panel";
+  });
+  slotted.forEach((el: any) => self.playlistSlot?.appendChild(el));
+}
+
+// Apply a playlist item's per-item overlay timings (skip-intro / next-episode)
+// as attributes + instance fields, clearing any stale ones first.
+function applyPlaylistItemOverlays(self: any, item: any): void {
+  try {
+    const sStart =
+      item?.skipIntroStart == null
+        ? Number.NaN
+        : Number.parseFloat(item.skipIntroStart);
+    const sEnd =
+      item?.skipIntroEnd == null
+        ? Number.NaN
+        : Number.parseFloat(item.skipIntroEnd);
+    const nextEp =
+      item?.nextEpisodeOverlay == null
+        ? Number.NaN
+        : Number.parseFloat(item.nextEpisodeOverlay);
+
+    self.removeAttribute("skip-intro-start");
+    self.removeAttribute("skip-intro-end");
+    self.removeAttribute("next-episode-button-overlay");
+
+    if (Number.isFinite(sStart)) {
+      self.setAttribute("skip-intro-start", String(sStart));
+      self.skipIntroStart = sStart;
+    } else {
+      self.skipIntroStart = null;
+    }
+
+    if (Number.isFinite(sEnd)) {
+      self.setAttribute("skip-intro-end", String(sEnd));
+      self.skipIntroEnd = sEnd;
+    } else {
+      self.skipIntroEnd = null;
+    }
+
+    if (Number.isFinite(nextEp)) {
+      self.setAttribute("next-episode-button-overlay", String(nextEp));
+      self.nextEpisodeOverlayStart = nextEp;
+    } else {
+      self.nextEpisodeOverlayStart = null;
+    }
+  } catch {}
+}
+
+// Teardown the current source and load the given playlist item, refreshing the
+// loader, per-item overlays, and the playlist panel. Shared by next()/previous().
+function switchToPlaylistItem(self: any, item: any): void {
+  if (!item?.playbackId) return;
+
+  // Lightweight teardown before switching
+  self.destroy();
+
+  // If PiP is active, mark intent to re-enter after the new source is ready
+  try {
+    if ((document as any).pictureInPictureElement) {
+      self._reenterPiPOnReady = true;
+      (document as any).exitPictureInPicture?.();
+    }
+  } catch {}
+
+  // Hide controls while loading the upcoming item
+  if (self.controlsContainer) {
+    self.controlsContainer.style.setProperty("--controls", "none");
+  }
+
+  // Show loader for smooth transition
+  showLoader(self);
+
+  applyPlaylistItemOverlays(self, item);
+
+  self.loadByPlaybackId(item.playbackId, {
+    token: item.token,
+    drmToken: item.drmToken,
+    customDomain: item.customDomain,
+  });
+
+  // Update playlist panel to reflect the new active item
+  if (
+    !self.hideDefaultPlaylistPanel &&
+    typeof renderPlaylistPanel === "function" &&
+    self.playlistPanel
+  ) {
+    renderPlaylistPanel(self);
+  }
+}
+
+// When using an external playlist panel, close it after a selection and notify listeners.
+function closeExternalPlaylistPanel(self: any): void {
+  if (!self.hideDefaultPlaylistPanel || !self.externalPlaylistOpen) return;
+
+  self.externalPlaylistOpen = false;
+  const children: Element[] = self.playlistSlot
+    ? Array.from(self.playlistSlot.children)
+    : [];
+  children.forEach(
+    (child) => ((child as HTMLElement).style.pointerEvents = "none")
+  );
+  self.dispatchEvent(
+    new CustomEvent("playlisttoggle", {
+      detail: {
+        open: false,
+        hasPlaylist: Array.isArray(self.playlist) && self.playlist.length > 0,
+        currentIndex: self.currentIndex,
+        totalItems: Array.isArray(self.playlist) ? self.playlist.length : 0,
+        playbackId: self.playbackId ?? null,
+      },
+      bubbles: true,
+      composed: true,
+    })
+  );
+}
+
+// Convert an HH:MM:SS timestamp to seconds.
+function timeToSeconds(timeStr: string): number {
+  const [h, m, s] = timeStr.split(":").map(Number);
+  return h * 3600 + m * 60 + s;
 }
 
 class FastPixPlayer extends windowObject.HTMLElement {
@@ -322,7 +595,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   shadowRoot!: ShadowRoot;
   prevButton!: HTMLButtonElement;
   nextButton!: HTMLButtonElement;
-  private playlistPanel?: HTMLDivElement;
+  private readonly playlistPanel?: HTMLDivElement;
   private playlistButton!: HTMLButtonElement;
   hideDefaultPlaylistPanel: boolean = false;
   playlistItems?: HTMLDivElement;
@@ -476,8 +749,10 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.playPauseButton = documentObject.createElement("button");
     this.playPauseButton.style.zIndex = "1500"; // Higher than hotspot z-index (1200)
     this.playPauseButton.style.position = "absolute";
-    this.playPauseButton.classList.add("initialPlayBigButton");
-    this.playPauseButton.classList.add("initialplayPauseButtonStyle");
+    this.playPauseButton.classList.add(
+      "initialPlayBigButton",
+      "initialplayPauseButtonStyle"
+    );
     this.bottomRightDiv = documentObject.createElement("div");
     this.bottomRightDiv.className = "bottomRightContainer";
     this.resolutionMenuButton = documentObject.createElement("button");
@@ -497,63 +772,10 @@ class FastPixPlayer extends windowObject.HTMLElement {
           track.mode = "hidden"; // Hide browser's native subtitles
 
           track.addEventListener("cuechange", () => {
-            // hide-native-subtitles: permanently suppress the built-in subtitleContainer
-            // even when the user enables subtitles via menu or setSubtitleTrack.
-            // Subtitles still flow through fastpixsubtitlecue so external UIs can render text.
-            const hideSubtitleContainer = this.hasAttribute(
-              "hide-native-subtitles"
-            );
-
-            if (!hideSubtitleContainer) {
-              if (track.activeCues && track.activeCues.length > 0) {
-                const cue = track.activeCues[0] as VTTCue | TextTrackCue;
-                if (cue && this.initialPlayClick) {
-                  const text = (cue as any).text ?? "";
-                  this.subtitleContainer.innerHTML = text;
-                  this.subtitleContainer.classList.add("contained");
-                } else {
-                  this.subtitleContainer.innerHTML = "";
-                  this.subtitleContainer.classList.remove("contained");
-                }
-              } else {
-                this.subtitleContainer.innerHTML = "";
-                this.subtitleContainer.classList.remove("contained");
-              }
-            } else {
-              // Ensure container stays empty when hide-native-subtitles is set.
-              this.subtitleContainer.innerHTML = "";
-              this.subtitleContainer.classList.remove("contained");
-            }
-
-            // Emit a custom event with the current subtitle text at this timestamp.
-            try {
-              const activeText =
-                track.activeCues && track.activeCues.length > 0
-                  ? (((track.activeCues[0] as any).text as string) ?? "")
-                  : "";
-              const activeCue = track.activeCues
-                ? (track.activeCues[0] as any)
-                : null;
-
-              this.dispatchEvent(
-                new CustomEvent("fastpixsubtitlecue", {
-                  detail: {
-                    text: activeText,
-                    language: track.language || undefined,
-                    startTime:
-                      typeof activeCue?.startTime === "number"
-                        ? activeCue.startTime
-                        : undefined,
-                    endTime:
-                      typeof activeCue?.endTime === "number"
-                        ? activeCue.endTime
-                        : undefined,
-                  },
-                })
-              );
-            } catch {
-              // ignore subtitle cue dispatch errors
-            }
+            // hide-native-subtitles still flows text through fastpixsubtitlecue so
+            // external UIs can render even while the built-in container stays empty.
+            updateNativeSubtitleContainer(this, track);
+            dispatchSubtitleCue(this, track);
           });
         }
       }
@@ -599,7 +821,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     for (const slotName of userSlotNames) {
       const region = documentObject.createElement("div");
       region.className = `fastpix-slot-region fastpix-slot-${slotName}`;
-      region.setAttribute("data-slot", slotName);
+      region.dataset.slot = slotName;
       const slotEl = documentObject.createElement("slot");
       slotEl.name = slotName;
       region.appendChild(slotEl);
@@ -738,7 +960,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   }
 
   get volume() {
-    return this.video ? this.video.volume : 1.0;
+    return this.video ? this.video.volume : 1;
   }
 
   get muted() {
@@ -799,7 +1021,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   }
 
   get playbackRate() {
-    return this.video ? this.video.playbackRate : 1.0;
+    return this.video ? this.video.playbackRate : 1;
   }
 
   get controls() {
@@ -936,8 +1158,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
 
     // Merge config without overriding unspecified keys
     const nextConfig: ShoppableSidebarConfig = {
-      ...(this.cartData?.productSidebarConfig ?? {}),
-      ...(shoppable.productSidebarConfig ?? {}),
+      ...this.cartData?.productSidebarConfig,
+      ...shoppable.productSidebarConfig,
     };
 
     // Replace products only if provided
@@ -948,7 +1170,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.cartData = {
       productSidebarConfig: nextConfig,
       products: nextProducts,
-    } as { productSidebarConfig: ShoppableSidebarConfig; products: any[] };
+    };
 
     // Update flags driven by config
     this.showPostPlayOverlay = Boolean(
@@ -1010,12 +1232,6 @@ class FastPixPlayer extends windowObject.HTMLElement {
   }
 
   convertChaptersToPlayerFormat(chaptersObj: any): [] {
-    // Helper to convert HH:MM:SS to seconds
-    function timeToSeconds(timeStr: string): number {
-      const [h, m, s] = timeStr.split(":").map(Number);
-      return h * 3600 + m * 60 + s;
-    }
-
     return chaptersObj.chapters.map((chapter: any) => {
       const startTime = timeToSeconds(chapter.startTime);
       const endTime = chapter.endTime
@@ -1034,9 +1250,9 @@ class FastPixPlayer extends windowObject.HTMLElement {
     return openAIChapters.map((chapter: { start: string; title: any }) => {
       const timeParts = chapter.start.split(":");
       const startTime =
-        parseInt(timeParts[0]) * 3600 +
-        parseInt(timeParts[1]) * 60 +
-        parseInt(timeParts[2]);
+        Number.parseInt(timeParts[0]) * 3600 +
+        Number.parseInt(timeParts[1]) * 60 +
+        Number.parseInt(timeParts[2]);
       return {
         startTime: startTime,
         value: chapter.title,
@@ -1060,15 +1276,17 @@ class FastPixPlayer extends windowObject.HTMLElement {
     try {
       const current = this.playlist[this.currentIndex] ?? {};
       const sStart =
-        current?.skipIntroStart != null
-          ? parseFloat(current.skipIntroStart)
-          : NaN;
+        current?.skipIntroStart == null
+          ? Number.NaN
+          : Number.parseFloat(current.skipIntroStart);
       const sEnd =
-        current?.skipIntroEnd != null ? parseFloat(current.skipIntroEnd) : NaN;
+        current?.skipIntroEnd == null
+          ? Number.NaN
+          : Number.parseFloat(current.skipIntroEnd);
       const nextEp =
-        current?.nextEpisodeOverlay != null
-          ? parseFloat(current.nextEpisodeOverlay)
-          : NaN;
+        current?.nextEpisodeOverlay == null
+          ? Number.NaN
+          : Number.parseFloat(current.nextEpisodeOverlay);
 
       // Clear prior attributes
       this.removeAttribute("skip-intro-start");
@@ -1114,81 +1332,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   next() {
     if (this.currentIndex < this.playlist.length - 1) {
       this.currentIndex++;
-      const nextItem = this.playlist[this.currentIndex];
-      if (nextItem?.playbackId) {
-        // Lightweight teardown before switching
-        this.destroy();
-
-        // If PiP is active, mark intent to re-enter after the new source is ready
-        try {
-          if ((document as any).pictureInPictureElement) {
-            (this as any)._reenterPiPOnReady = true;
-            (document as any).exitPictureInPicture?.();
-          }
-        } catch {}
-
-        // Hide controls while loading next
-        this.controlsContainer.style.setProperty("--controls", "none");
-
-        // Show loader for smooth transition
-        showLoader(this);
-
-        // Apply per-item overlays as attributes for the upcoming item
-        try {
-          const sStart =
-            nextItem?.skipIntroStart != null
-              ? parseFloat(nextItem.skipIntroStart)
-              : NaN;
-          const sEnd =
-            nextItem?.skipIntroEnd != null
-              ? parseFloat(nextItem.skipIntroEnd)
-              : NaN;
-          const nextEp =
-            nextItem?.nextEpisodeOverlay != null
-              ? parseFloat(nextItem.nextEpisodeOverlay)
-              : NaN;
-
-          this.removeAttribute("skip-intro-start");
-          this.removeAttribute("skip-intro-end");
-          this.removeAttribute("next-episode-button-overlay");
-
-          if (Number.isFinite(sStart)) {
-            this.setAttribute("skip-intro-start", String(sStart));
-            (this as any).skipIntroStart = sStart;
-          } else {
-            (this as any).skipIntroStart = null;
-          }
-
-          if (Number.isFinite(sEnd)) {
-            this.setAttribute("skip-intro-end", String(sEnd));
-            (this as any).skipIntroEnd = sEnd;
-          } else {
-            (this as any).skipIntroEnd = null;
-          }
-
-          if (Number.isFinite(nextEp)) {
-            this.setAttribute("next-episode-button-overlay", String(nextEp));
-            (this as any).nextEpisodeOverlayStart = nextEp;
-          } else {
-            (this as any).nextEpisodeOverlayStart = null;
-          }
-        } catch {}
-
-        this.loadByPlaybackId(nextItem.playbackId, {
-          token: nextItem.token,
-          drmToken: nextItem.drmToken,
-          customDomain: nextItem.customDomain,
-        });
-
-        // Update playlist panel to reflect the new active item
-        if (
-          !this.hideDefaultPlaylistPanel &&
-          typeof renderPlaylistPanel === "function" &&
-          this.playlistPanel
-        ) {
-          renderPlaylistPanel(this);
-        }
-      }
+      switchToPlaylistItem(this, this.playlist[this.currentIndex]);
     } else {
       console.info("End of playlist");
     }
@@ -1201,82 +1345,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
   previous() {
     if (this.currentIndex > 0) {
       this.currentIndex--;
-      const prevItem = this.playlist[this.currentIndex];
-      if (prevItem?.playbackId) {
-        // Lightweight teardown before switching
-        this.destroy();
-
-        // If PiP is active, mark intent to re-enter after the new source is ready
-        try {
-          if ((document as any).pictureInPictureElement) {
-            (this as any)._reenterPiPOnReady = true;
-            (document as any).exitPictureInPicture?.();
-          }
-        } catch {}
-
-        // Hide controls while loading previous
-        if (this.controlsContainer) {
-          this.controlsContainer.style.setProperty("--controls", "none");
-        }
-        // Show loader for smooth transition
-        showLoader(this);
-
-        // Apply per-item overlays as attributes for the upcoming item
-        try {
-          const sStart =
-            prevItem?.skipIntroStart != null
-              ? parseFloat(prevItem.skipIntroStart)
-              : NaN;
-          const sEnd =
-            prevItem?.skipIntroEnd != null
-              ? parseFloat(prevItem.skipIntroEnd)
-              : NaN;
-          const nextEp =
-            prevItem?.nextEpisodeOverlay != null
-              ? parseFloat(prevItem.nextEpisodeOverlay)
-              : NaN;
-
-          this.removeAttribute("skip-intro-start");
-          this.removeAttribute("skip-intro-end");
-          this.removeAttribute("next-episode-button-overlay");
-
-          if (Number.isFinite(sStart)) {
-            this.setAttribute("skip-intro-start", String(sStart));
-            (this as any).skipIntroStart = sStart;
-          } else {
-            (this as any).skipIntroStart = null;
-          }
-
-          if (Number.isFinite(sEnd)) {
-            this.setAttribute("skip-intro-end", String(sEnd));
-            (this as any).skipIntroEnd = sEnd;
-          } else {
-            (this as any).skipIntroEnd = null;
-          }
-
-          if (Number.isFinite(nextEp)) {
-            this.setAttribute("next-episode-button-overlay", String(nextEp));
-            (this as any).nextEpisodeOverlayStart = nextEp;
-          } else {
-            (this as any).nextEpisodeOverlayStart = null;
-          }
-        } catch {}
-
-        this.loadByPlaybackId(prevItem.playbackId, {
-          token: prevItem.token,
-          drmToken: prevItem.drmToken,
-          customDomain: prevItem.customDomain,
-        });
-
-        // Update playlist panel to reflect the new active item
-        if (
-          !this.hideDefaultPlaylistPanel &&
-          typeof renderPlaylistPanel === "function" &&
-          this.playlistPanel
-        ) {
-          renderPlaylistPanel(this);
-        }
-      }
+      switchToPlaylistItem(this, this.playlist[this.currentIndex]);
     } else {
       console.info("Start of playlist");
     }
@@ -1406,92 +1475,36 @@ class FastPixPlayer extends windowObject.HTMLElement {
     const index = this.playlist.findIndex(
       (item: any) => item.playbackId === playbackId
     );
-    if (index !== -1) {
-      this.currentIndex = index; // 🧠 update the internal pointer
-      const item = this.playlist[this.currentIndex];
-
-      // Apply per-item overlays as attributes for the selected item
-      try {
-        const sStart =
-          item?.skipIntroStart != null ? parseFloat(item.skipIntroStart) : NaN;
-        const sEnd =
-          item?.skipIntroEnd != null ? parseFloat(item.skipIntroEnd) : NaN;
-        const nextEp =
-          item?.nextEpisodeOverlay != null
-            ? parseFloat(item.nextEpisodeOverlay)
-            : NaN;
-
-        this.removeAttribute("skip-intro-start");
-        this.removeAttribute("skip-intro-end");
-        this.removeAttribute("next-episode-button-overlay");
-
-        if (Number.isFinite(sStart)) {
-          this.setAttribute("skip-intro-start", String(sStart));
-          (this as any).skipIntroStart = sStart;
-        } else {
-          (this as any).skipIntroStart = null;
-        }
-
-        if (Number.isFinite(sEnd)) {
-          this.setAttribute("skip-intro-end", String(sEnd));
-          (this as any).skipIntroEnd = sEnd;
-        } else {
-          (this as any).skipIntroEnd = null;
-        }
-
-        if (Number.isFinite(nextEp)) {
-          this.setAttribute("next-episode-button-overlay", String(nextEp));
-          (this as any).nextEpisodeOverlayStart = nextEp;
-        } else {
-          (this as any).nextEpisodeOverlayStart = null;
-        }
-      } catch {}
-
-      this.loadByPlaybackId(playbackId, {
-        token: item.token,
-        drmToken: item.drmToken,
-        customDomain: item.customDomain,
-        emitPlaybackChange: true, // fire event only on user-initiated selection
-      });
-
-      // Update playlist panel to reflect the new active item
-      if (
-        !this.hideDefaultPlaylistPanel &&
-        typeof renderPlaylistPanel === "function" &&
-        this.playlistPanel
-      ) {
-        renderPlaylistPanel(this);
-      }
-
-      // If using external panel, automatically close it after selection
-      if (this.hideDefaultPlaylistPanel && this.externalPlaylistOpen) {
-        this.externalPlaylistOpen = false;
-        const children: Element[] = this.playlistSlot
-          ? Array.from(this.playlistSlot.children)
-          : [];
-        children.forEach(
-          (child) => ((child as HTMLElement).style.pointerEvents = "none")
-        );
-        this.dispatchEvent(
-          new CustomEvent("playlisttoggle", {
-            detail: {
-              open: false,
-              hasPlaylist:
-                Array.isArray(this.playlist) && this.playlist.length > 0,
-              currentIndex: this.currentIndex,
-              totalItems: Array.isArray(this.playlist)
-                ? this.playlist.length
-                : 0,
-              playbackId: this.playbackId ?? null,
-            },
-            bubbles: true,
-            composed: true,
-          })
-        );
-      }
-    } else {
+    if (index === -1) {
       console.warn("PlaybackId not found in current playlist");
+      this.hasAutoClosedSidebar = false;
+      return;
     }
+
+    this.currentIndex = index; // 🧠 update the internal pointer
+    const item = this.playlist[this.currentIndex];
+
+    // Apply per-item overlays as attributes for the selected item
+    applyPlaylistItemOverlays(this, item);
+
+    this.loadByPlaybackId(playbackId, {
+      token: item.token,
+      drmToken: item.drmToken,
+      customDomain: item.customDomain,
+      emitPlaybackChange: true, // fire event only on user-initiated selection
+    });
+
+    // Update playlist panel to reflect the new active item
+    if (
+      !this.hideDefaultPlaylistPanel &&
+      typeof renderPlaylistPanel === "function" &&
+      this.playlistPanel
+    ) {
+      renderPlaylistPanel(this);
+    }
+
+    // If using external panel, automatically close it after selection
+    closeExternalPlaylistPanel(this);
     this.hasAutoClosedSidebar = false;
   }
 
@@ -1533,11 +1546,11 @@ class FastPixPlayer extends windowObject.HTMLElement {
       // Disable prev button if it's the first episode
       this.prevEpisodeButton!.disabled = isFirstEpisode;
       // Disable next button if it's the last episode
-      this.nextEpisodeButton!.disabled = isLastEpisode;
+      this.nextEpisodeButton.disabled = isLastEpisode;
 
       // Update button styles based on disabled state
       this.prevEpisodeButton!.style.opacity = isFirstEpisode ? "0.5" : "1";
-      this.nextEpisodeButton!.style.opacity = isLastEpisode ? "0.5" : "1";
+      this.nextEpisodeButton.style.opacity = isLastEpisode ? "0.5" : "1";
     } else {
       // Hide episode controls for standalone content
       this.episodeControlsContainer!.style.display = "none";
@@ -1580,7 +1593,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
         if (this.video.fp) {
           this.video.fp.destroy();
         }
-        const HlsCtor = getHlsConstructor() as new (c?: unknown) => HlsInstance;
+        const HlsCtor = getHlsConstructor();
         this.config = {
           ...this.config,
           startFragPrefetch: startFragPrefetchForStreamType(this.streamType),
@@ -1772,58 +1785,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
       );
     }
 
-    if (this.playbackRatesAttribute !== null) {
-      const parsedPlaybackRates = this.playbackRatesAttribute
-        .split(" ")
-        .map((rate: string) => parseFloat(rate));
-
-      const uniquePlaybackRates = [...new Set(parsedPlaybackRates)];
-      this.playbackRates.splice(
-        0,
-        this.playbackRates.length,
-        ...uniquePlaybackRates
-      );
-    } else {
-      this.playbackRates = [1, 1.2, 1.5, 1.7, 2];
-    }
-
-    this.playbackRateDiv = documentObject.createElement("div");
-    this.playbackRateDiv.className = "playbackRate-menu";
-    this.playbackRateDiv.style.display = "none";
-
-    const defaultRate = parseAndSetDefaultPlaybackRate(
-      this.defaultPlaybackRateAttribute
-    );
-    if (defaultRate) {
-      this.defaultPlaybackRate = defaultRate;
-    }
-
-    this.playbackRates.forEach((rate: any) => {
-      const button = documentObject.createElement("button");
-      button.style.padding = "5px 6px";
-      button.textContent = `${rate}x`;
-      button.title = `${rate}x`;
-      button.className = "playbackRateButton";
-
-      // Pre-select default as active before any click
-      if (String(rate) === String(this.defaultPlaybackRate)) {
-        button.classList.add("active");
-        this.lastClickedPlaybackRateButton = button;
-      }
-
-      button.addEventListener("click", () => {
-        // Ensure any previously active buttons are cleared before applying
-        try {
-          const all = this.playbackRateDiv?.querySelectorAll(
-            ".playbackRateButton.active"
-          );
-          all?.forEach((el: Element) => el.classList.remove("active"));
-        } catch {}
-        setPlaybackRate(this, rate, button);
-      });
-
-      this.playbackRateDiv?.appendChild(button);
-    });
+    setupPlaybackRates(this);
 
     this.playbackRateButton = documentObject.createElement("button");
     this.playbackRateButton.textContent = `${this.defaultPlaybackRate}x`;
@@ -1833,45 +1795,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.playlistButton.innerHTML = PlaylistIcon;
     this.playlistButton.className = "playlistButton";
 
-    // Only create/append default playlist panel when not hidden by attribute
-    if (!this.hideDefaultPlaylistPanel) {
-      this.playlistPanel = document.createElement("div");
-      this.playlistPanel.className = "playlist-panel";
-      this.playlistPanel.style.maxHeight = "400px";
-
-      const header = document.createElement("div");
-      header.className = "playlist-header";
-      header.textContent = "Episode List";
-
-      this.playlistItems = document.createElement("div");
-      this.playlistItems.className = "playlist-items-wrapper";
-
-      this.playlistPanel.appendChild(header);
-      this.bottomRightDiv.appendChild(this.playlistPanel);
-    } else {
-      // Create an internal slot container so user panels live inside fullscreen element
-      this.playlistSlot = document.createElement("div");
-      this.playlistSlot.className = "playlist-slot";
-      // Minimal defaults; positioned relative to controls container
-      this.playlistSlot.style.position = "absolute";
-      this.playlistSlot.style.top = "0";
-      this.playlistSlot.style.left = "0";
-      this.playlistSlot.style.right = "0";
-      this.playlistSlot.style.bottom = "0";
-      this.playlistSlot.style.opacity = "0";
-      this.playlistSlot.style.transition = "opacity 0.9s ease";
-      this.playlistSlot.style.pointerEvents = "none";
-      this.playlistSlot.style.zIndex = "9999";
-      this.controlsContainer.appendChild(this.playlistSlot);
-
-      // Move any declarative slotted children into the slot container
-      const slotted = Array.from(this.children).filter((el: Element) => {
-        const slotAttr = el.getAttribute("slot");
-        const dataSlot = el.getAttribute("data-fastpix-slot");
-        return slotAttr === "playlist-panel" || dataSlot === "playlist-panel";
-      });
-      slotted.forEach((el) => this.playlistSlot?.appendChild(el));
-    }
+    setupPlaylistPanel(this);
 
     // playbackRateButton click handler
     playbackRateButtonClickHandler(this);
@@ -1918,7 +1842,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     } catch {}
 
     // start-time attribute
-    const startTime = parseFloat(this.startTimeAttribute) || 0;
+    const startTime = Number.parseFloat(this.startTimeAttribute) || 0;
     this.video.currentTime = startTime;
 
     this.wrapper.style.width = width;
@@ -2063,7 +1987,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
     }
     if (!this.cartSidebar) return;
     this.cartSidebar.style.display = "flex";
-    const _ = this.cartSidebar.offsetWidth;
+    // Force a reflow so the width transition animates from the collapsed state.
+    this.cartSidebar.getBoundingClientRect();
     this.cartSidebar.style.width = "var(--shoppable-sidebar-width)";
     this.isCartOpen = true;
     this.cartButton.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12l-4.89 4.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"/></svg>`;
@@ -2130,7 +2055,8 @@ class FastPixPlayer extends windowObject.HTMLElement {
     if (!btn) return;
     try {
       btn.classList.remove("cart-dance");
-      void btn.offsetWidth;
+      // Force a reflow so re-adding the class restarts the animation.
+      btn.getBoundingClientRect();
       btn.classList.add("cart-dance");
       window.setTimeout(() => btn.classList.remove("cart-dance"), 600);
     } catch {
@@ -2191,7 +2117,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
     const hotspots = this.wrapper.querySelectorAll(".hotspot");
     hotspots.forEach((hotspot) => {
       if (hotspot.parentNode) {
-        hotspot.parentNode.removeChild(hotspot);
+        hotspot.remove();
       }
     });
     this.isHotspotVisible = false;
@@ -2390,7 +2316,7 @@ class FastPixPlayer extends windowObject.HTMLElement {
    * - First match by `TrackInfo.label`
    */
   public setSubtitleTrack(languageName: string | null) {
-    if (!this.video || !this.video.textTracks) return;
+    if (!this.video?.textTracks) return;
 
     const tracks: TextTrack[] = Array.from(this.video.textTracks || []);
     // Map to only subtitle/caption kind

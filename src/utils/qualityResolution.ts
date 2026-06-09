@@ -41,8 +41,7 @@ function resolutionLevelInfoFromHlsLevel(
     width: lvl.width,
   };
   if (typeof lvl.bitrate === "number") info.bitrate = lvl.bitrate;
-  if (typeof (lvl as any).frameRate === "number")
-    info.frameRate = (lvl as any).frameRate;
+  if (typeof lvl.frameRate === "number") info.frameRate = lvl.frameRate;
   return info;
 }
 
@@ -58,12 +57,12 @@ function getLoadedLevelIndex(hls: any): number | null {
 function buildPlaybackQualityState(context: any): PlaybackQualityState {
   const mode = context.userSelectedLevel == null ? "auto" : "manual";
   const lockedLevel =
-    context.userSelectedLevel != null
-      ? resolutionLevelInfoFromHlsLevel(context, context.userSelectedLevel)
-      : null;
+    context.userSelectedLevel == null
+      ? null
+      : resolutionLevelInfoFromHlsLevel(context, context.userSelectedLevel);
   const loadIdx = getLoadedLevelIndex(context.hls);
   const loadedLevel =
-    loadIdx != null ? resolutionLevelInfoFromHlsLevel(context, loadIdx) : null;
+    loadIdx == null ? null : resolutionLevelInfoFromHlsLevel(context, loadIdx);
   return { mode, lockedLevel, loadedLevel };
 }
 
@@ -95,8 +94,8 @@ export function dispatchFastpixQualityFailed(
       new CustomEvent("fastpixqualityfailed", {
         detail: {
           reason,
-          ...(levelId !== undefined ? { levelId } : {}),
-          ...(raw !== undefined ? { raw } : {}),
+          ...(levelId === undefined ? {} : { levelId }),
+          ...(raw === undefined ? {} : { raw }),
         },
       })
     );

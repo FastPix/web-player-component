@@ -49,7 +49,7 @@ function hideError(context: any): void {
   const errorDiv = context.wrapper.querySelector(".errorContainer");
   context.isError = false;
   if (errorDiv) {
-    context.wrapper.removeChild(errorDiv);
+    errorDiv.remove();
 
     if (typeof showAllControls === "function") {
       showAllControls(context);

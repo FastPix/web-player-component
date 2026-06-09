@@ -48,7 +48,7 @@ function WindowEvents(context: VideoPlayerContext) {
   });
 
   window.addEventListener("DOMContentLoaded", () => {
-    const savedVolume: number = parseFloat(
+    const savedVolume: number = Number.parseFloat(
       localStorage.getItem("savedVolume") ?? "0.6"
     );
     const volumeButtonIcon: string =

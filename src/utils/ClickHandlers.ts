@@ -55,7 +55,7 @@ function fullScreenButtonClickHandler(context: any) {
 
 function fastForwardButtonClickHandler(context: Context) {
   context.forwardSeekOffset = context.forwardSeekAttribute
-    ? parseInt(context.forwardSeekAttribute)
+    ? Number.parseInt(context.forwardSeekAttribute)
     : 10;
   adjustCurrentTimeBy(context, context.forwardSeekOffset); // Increase currentTime by forwardSeekOffset seconds
   hideMenus(context);
@@ -64,7 +64,7 @@ function fastForwardButtonClickHandler(context: Context) {
 function rewindButtonClickHandler(context: Context) {
   // Default time is 10sec
   context.backwardSeekOffset = context.backwardSeekAttribute
-    ? parseInt(context.backwardSeekAttribute)
+    ? Number.parseInt(context.backwardSeekAttribute)
     : 10;
   adjustCurrentTimeBy(context, -context.backwardSeekOffset); // Decrease currentTime by backwardSeekOffset seconds
   hideMenus(context);
@@ -96,14 +96,16 @@ function VolumeButtonClickHandler(context: any) {
   context.volumeButton.addEventListener("click", () => {
     const noVolumePrefAttribute = context.hasAttribute("no-volume-pref");
 
-    if (!noVolumePrefAttribute) {
-      localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
-    } else {
+    if (noVolumePrefAttribute) {
       localStorage.removeItem("savedVolumeIcon");
+    } else {
+      localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
     }
 
     // Retrieve saved volume from local storage
-    const savedVolume = parseFloat(localStorage.getItem("savedVolume") ?? "1");
+    const savedVolume = Number.parseFloat(
+      localStorage.getItem("savedVolume") ?? "1"
+    );
 
     // Check if the volume is 0 and the video is muted
     if (context.video.muted || savedVolume === 0) {
@@ -125,13 +127,13 @@ function VolumeButtonClickHandler(context: any) {
     updateVolumeControlBackground(context);
     updateVolumeButtonIcon(context);
 
-    if (!noVolumePrefAttribute) {
+    if (noVolumePrefAttribute) {
+      localStorage.removeItem("savedVolume");
+      localStorage.removeItem("savedVolumeIcon");
+    } else {
       // Save the volume to localStorage
       localStorage.setItem("savedVolume", context.video.volume.toString());
       localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
-    } else {
-      localStorage.removeItem("savedVolume");
-      localStorage.removeItem("savedVolumeIcon");
     }
     syncVolumeWithChromecast(context.video.volume, context.video.muted);
     hideMenus(context);

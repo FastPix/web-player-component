@@ -162,7 +162,9 @@ const KeyBoardInputManager = (context: any) => {
 
       const keyActions: Record<string, () => void> = {
         KeyK: () => {
-          if (!context.isLoading) {
+          if (context.isLoading) {
+            context.pauseAfterLoading = context.video.paused;
+          } else {
             toggleVideoPlayback(
               context,
               context.playbackId,
@@ -170,8 +172,6 @@ const KeyBoardInputManager = (context: any) => {
               context.streamType
             );
             hideMenus(context);
-          } else {
-            context.pauseAfterLoading = context.video.paused;
           }
         },
         ArrowUp: () =>

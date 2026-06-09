@@ -330,12 +330,7 @@ function playAndClearHotspotAfterDelay(
 }
 
 function showPostPlayOverlayUI(context: any) {
-  if (
-    !(
-      context.getAttribute &&
-      context.getAttribute("theme") === "shoppable-video-player"
-    )
-  ) {
+  if (context.getAttribute?.("theme") !== "shoppable-video-player") {
     return;
   }
 
@@ -715,8 +710,8 @@ function updateSidebarProductHighlights(context: any) {
   Array.from(
     container.querySelectorAll<HTMLDivElement>(".cartProduct")
   ).forEach((el) => {
-    const start = Number((el as any).dataset?.startTime ?? NaN);
-    const end = Number((el as any).dataset?.endTime ?? NaN);
+    const start = Number((el as any).dataset?.startTime ?? Number.NaN);
+    const end = Number((el as any).dataset?.endTime ?? Number.NaN);
     const isActive =
       !Number.isNaN(start) && !Number.isNaN(end) && now >= start && now <= end;
 
@@ -794,7 +789,8 @@ function shoppableTheme(context: any) {
           context.isCartOpen = !context.isCartOpen;
           if (context.isCartOpen) {
             context.cartSidebar.style.display = "flex";
-            const _ = context.cartSidebar.offsetWidth;
+            // Force a reflow so the width transition animates from the collapsed state.
+            context.cartSidebar.getBoundingClientRect();
             context.cartSidebar.style.width = "var(--shoppable-sidebar-width)";
             context.cartButton.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24"><path d="M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 0 0 5.7 7.11L10.59 12l-4.89 4.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z"/></svg>`;
             context.progressBar.classList.add("cartSidebarOpen-progress-bar");

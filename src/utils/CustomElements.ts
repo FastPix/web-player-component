@@ -106,8 +106,7 @@ function createCustomGlobal(): typeof globalThis {
 
 // Check if we need to use the custom global environment.
 const isCustomGlobal =
-  typeof window === "undefined" ||
-  typeof globalThis.customElements === "undefined";
+  typeof window === "undefined" || globalThis.customElements === undefined;
 const customGlobal = isCustomGlobal ? createCustomGlobal() : globalThis;
 
 // Export the relevant objects.

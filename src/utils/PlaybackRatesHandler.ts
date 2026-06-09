@@ -1,8 +1,10 @@
 function initializePlaybackRates(context: any): void {
-  if (context.playbackRatesAttribute !== null) {
+  if (context.playbackRatesAttribute === null) {
+    context.playbackRates = [1, 1.2, 1.5, 1.7, 2];
+  } else {
     const parsedPlaybackRates = context.playbackRatesAttribute
       .split(" ")
-      .map((rate: string) => parseFloat(rate));
+      .map((rate: string) => Number.parseFloat(rate));
 
     const uniquePlaybackRates = [...new Set(parsedPlaybackRates)];
     context.playbackRates.splice(
@@ -10,8 +12,6 @@ function initializePlaybackRates(context: any): void {
       context.playbackRates.length,
       ...uniquePlaybackRates
     );
-  } else {
-    context.playbackRates = [1, 1.2, 1.5, 1.7, 2];
   }
 }
 
@@ -56,7 +56,10 @@ function parseAndSetDefaultPlaybackRate(
 ): string | null {
   if (defaultPlaybackRateAttribute !== null) {
     const parsedRates = defaultPlaybackRateAttribute.trim().split(" ");
-    if (parsedRates.length === 1 && !isNaN(parseFloat(parsedRates[0]))) {
+    if (
+      parsedRates.length === 1 &&
+      !Number.isNaN(Number.parseFloat(parsedRates[0]))
+    ) {
       return parsedRates[0];
     }
   }

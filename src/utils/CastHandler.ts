@@ -24,12 +24,12 @@ function setCastDebugFromContext(playerContext: any): void {
 
 function castLog(message: string, data?: unknown): void {
   if (!castDebugEnabled) return;
-  if (data !== undefined) {
-    // eslint-disable-next-line no-console
-    console.log(CAST_LOG_PREFIX, message, data);
-  } else {
+  if (data === undefined) {
     // eslint-disable-next-line no-console
     console.log(CAST_LOG_PREFIX, message);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(CAST_LOG_PREFIX, message, data);
   }
 }
 
@@ -37,12 +37,12 @@ function castStep(step: number, message: string, data?: unknown): void {
   if (!castDebugEnabled) return;
   const label = `--- STEP ${step} ---`;
   if (CAST_DIAGNOSE) {
-    if (data !== undefined) {
-      // eslint-disable-next-line no-console
-      console.log(CAST_LOG_PREFIX, label, message, data);
-    } else {
+    if (data === undefined) {
       // eslint-disable-next-line no-console
       console.log(CAST_LOG_PREFIX, label, message);
+    } else {
+      // eslint-disable-next-line no-console
+      console.log(CAST_LOG_PREFIX, label, message, data);
     }
   } else {
     castLog(message, data);
@@ -63,9 +63,7 @@ function castWarn(...args: any[]): void {
 
 // For APIs that expect an error callback function
 function castErrorFn(...args: any[]): void {
-  if (!castDebugEnabled) return;
-  // eslint-disable-next-line no-console
-  console.error(...args);
+  castError(...args);
 }
 
 export interface CastDrmConfig {
@@ -267,6 +265,149 @@ function seekChromecastProgressbar(time: number): void {
   }
 }
 
+// One poll tick while casting: mirror the receiver's playback state back onto
+// the local <video> (loader, paused flag, ended/timeupdate events).
+function runCastMediaSyncTick(lastStateRef: { current: string | null }): void {
+  const active = castMediaSyncActive;
+  if (!active) return;
+  const sessNow = getCastContext()?.getCurrentSession?.();
+  const media = sessNow?.getMediaSession?.();
+  if (!media) return;
+
+  const pc = active.playerContext;
+  const vid = active.video;
+  const rp = getRemotePlaybackInstance(pc).remotePlayer;
+
+  const state = media.playerState;
+  if (state !== lastStateRef.current) {
+    castLog("Media state", {
+      playerState: state,
+      estimatedTime: media.getEstimatedTime?.(),
+    });
+    lastStateRef.current = state;
+  }
+  lastPlaybackTime = media.getEstimatedTime();
+
+  if (media.playerState === "BUFFERING") {
+    showLoader(pc);
+  } else {
+    hideLoader(pc);
+  }
+
+  pc.pausedOnCasting = media.playerState === "PAUSED";
+
+  const loopEnabled = pc.loopEnabled ?? rp?.isLoopingEnabled;
+
+  if (
+    rp?.duration &&
+    Math.floor(lastPlaybackTime) >= Math.floor(rp.duration) &&
+    !loopEnabled &&
+    !hasDispatchedEndedEvent
+  ) {
+    const endedEvent = new Event("ended");
+    vid.dispatchEvent(endedEvent);
+    hasDispatchedEndedEvent = true;
+    hideInitControls(pc);
+    showLoader(pc);
+    localStorage.setItem("chromecastFinished", "true");
+    localStorage.setItem("chromecastActive", "false");
+    showLoader(pc);
+  }
+
+  if (
+    rp?.duration &&
+    Math.floor(lastPlaybackTime) < Math.floor(rp.duration) &&
+    hasDispatchedEndedEvent
+  ) {
+    hasDispatchedEndedEvent = false;
+  }
+
+  vid.dispatchEvent(new Event("timeupdate"));
+}
+
+// Cast session just started/resumed on this sender: freeze local playback and
+// begin mirroring the receiver's state.
+function handleCastSessionStarted(
+  session: any,
+  video: HTMLVideoElement,
+  playerContext: any,
+  intendedSenderPc: any
+): void {
+  playerContext.currentCastSession = session;
+
+  if (intendedSenderPc != null && intendedSenderPc !== playerContext) {
+    video.pause();
+    return;
+  }
+
+  if (castMediaSyncPollId !== null) {
+    video.pause();
+    return;
+  }
+
+  const { isMuted, mediaVolume } = getStoredVolume(playerContext);
+  const safeVolume = Math.min(Math.max(mediaVolume, 0), 1);
+
+  localStorage.setItem("chromecastFinished", "false");
+  lastPlaybackTime = video.currentTime;
+  localStorage.setItem("chromecastActive", "true");
+  freezeVideoWhileUpdatingProgress(video, playerContext);
+  syncVolumeWithChromecast(safeVolume, isMuted);
+  video.pause();
+
+  castMediaSyncActive = { video, playerContext };
+  const lastStateRef: { current: string | null } = { current: null };
+
+  castMediaSyncPollId = window.setInterval(() => {
+    requestAnimationFrame(() => runCastMediaSyncTick(lastStateRef));
+  }, 1000);
+}
+
+// Cast session ended: restore local playback position/volume and resume or
+// stay paused depending on the pre-cast state.
+function handleCastSessionEnded(
+  session: any,
+  video: HTMLVideoElement,
+  playerContext: any,
+  w: any
+): void {
+  const media = session?.getMediaSession();
+  castLog("SESSION_ENDED", {
+    finalTime: media?.getEstimatedTime?.() ?? lastPlaybackTime,
+  });
+
+  if (localStorage.getItem("chromecastActive") === "true") {
+    localStorage.setItem("chromecastActive", "false");
+  }
+
+  lastPlaybackTime = media?.getEstimatedTime() ?? lastPlaybackTime;
+  playerContext.currentCastSession = null;
+
+  const senderPc = w.__fastpixCastingPlayerContext;
+  const senderVid = w.__fastpixCastingVideo as HTMLVideoElement | undefined;
+
+  const isSenderStop = senderPc == null || senderPc === playerContext;
+
+  if (isSenderStop) {
+    if (senderPc?.__fpCastFreezeProgressInterval != null) {
+      clearInterval(senderPc.__fpCastFreezeProgressInterval);
+      senderPc.__fpCastFreezeProgressInterval = null;
+    }
+    clearCastMediaSyncPoll();
+    const v = senderVid ?? video;
+    v.currentTime = lastPlaybackTime;
+    localStorage.setItem("media-volume", v.volume.toString());
+    w.__fastpixCastingPlayerContext = null;
+    w.__fastpixCastingVideo = null;
+  }
+
+  if (playerContext.pausedOnCasting) {
+    video.pause();
+  } else {
+    video.play();
+  }
+}
+
 function syncPlaybackWithChromecast(
   video: HTMLVideoElement,
   playerContext: any
@@ -288,134 +429,18 @@ function syncPlaybackWithChromecast(
       });
       switch (event.sessionState) {
         case SessionState.SESSION_STARTED:
-        case SessionState.SESSION_RESUMED: {
-          playerContext.currentCastSession = session;
-
-          if (intendedSenderPc != null && intendedSenderPc !== playerContext) {
-            video.pause();
-            break;
-          }
-
-          if (castMediaSyncPollId !== null) {
-            video.pause();
-            break;
-          }
-
-          const { isMuted, mediaVolume } = getStoredVolume(playerContext);
-          const safeVolume = Math.min(Math.max(mediaVolume, 0), 1);
-
-          localStorage.setItem("chromecastFinished", "false");
-          lastPlaybackTime = video.currentTime;
-          localStorage.setItem("chromecastActive", "true");
-          freezeVideoWhileUpdatingProgress(video, playerContext);
-          syncVolumeWithChromecast(safeVolume, isMuted);
-          video.pause();
-
-          castMediaSyncActive = { video, playerContext };
-          let lastLoggedState: string | null = null;
-
-          castMediaSyncPollId = window.setInterval(() => {
-            requestAnimationFrame(() => {
-              const active = castMediaSyncActive;
-              if (!active) return;
-              const sessNow = getCastContext()?.getCurrentSession?.();
-              const media = sessNow?.getMediaSession?.();
-              if (!media) return;
-
-              const pc = active.playerContext;
-              const vid = active.video;
-              const rp = getRemotePlaybackInstance(pc).remotePlayer;
-
-              const state = media.playerState;
-              if (state !== lastLoggedState) {
-                castLog("Media state", {
-                  playerState: state,
-                  estimatedTime: media.getEstimatedTime?.(),
-                });
-                lastLoggedState = state;
-              }
-              lastPlaybackTime = media.getEstimatedTime();
-
-              if (media.playerState === "BUFFERING") {
-                showLoader(pc);
-              } else {
-                hideLoader(pc);
-              }
-
-              pc.pausedOnCasting = media.playerState === "PAUSED";
-
-              const loopEnabled = pc.loopEnabled ?? rp?.isLoopingEnabled;
-
-              if (
-                rp?.duration &&
-                Math.floor(lastPlaybackTime) >= Math.floor(rp.duration) &&
-                !loopEnabled &&
-                !hasDispatchedEndedEvent
-              ) {
-                const endedEvent = new Event("ended");
-                vid.dispatchEvent(endedEvent);
-                hasDispatchedEndedEvent = true;
-                hideInitControls(pc);
-                showLoader(pc);
-                localStorage.setItem("chromecastFinished", "true");
-                localStorage.setItem("chromecastActive", "false");
-                showLoader(pc);
-              }
-
-              if (
-                rp?.duration &&
-                Math.floor(lastPlaybackTime) < Math.floor(rp.duration) &&
-                hasDispatchedEndedEvent
-              ) {
-                hasDispatchedEndedEvent = false;
-              }
-
-              vid.dispatchEvent(new Event("timeupdate"));
-            });
-          }, 1000);
+        case SessionState.SESSION_RESUMED:
+          handleCastSessionStarted(
+            session,
+            video,
+            playerContext,
+            intendedSenderPc
+          );
           break;
-        }
 
-        case SessionState.SESSION_ENDED: {
-          const media = session?.getMediaSession();
-          castLog("SESSION_ENDED", {
-            finalTime: media?.getEstimatedTime?.() ?? lastPlaybackTime,
-          });
-
-          if (localStorage.getItem("chromecastActive") === "true") {
-            localStorage.setItem("chromecastActive", "false");
-          }
-
-          lastPlaybackTime = media?.getEstimatedTime() ?? lastPlaybackTime;
-          playerContext.currentCastSession = null;
-
-          const senderPc = w.__fastpixCastingPlayerContext;
-          const senderVid = w.__fastpixCastingVideo as
-            | HTMLVideoElement
-            | undefined;
-
-          const isSenderStop = senderPc == null || senderPc === playerContext;
-
-          if (isSenderStop) {
-            if (senderPc?.__fpCastFreezeProgressInterval != null) {
-              clearInterval(senderPc.__fpCastFreezeProgressInterval);
-              senderPc.__fpCastFreezeProgressInterval = null;
-            }
-            clearCastMediaSyncPoll();
-            const v = senderVid ?? video;
-            v.currentTime = lastPlaybackTime;
-            localStorage.setItem("media-volume", v.volume.toString());
-            w.__fastpixCastingPlayerContext = null;
-            w.__fastpixCastingVideo = null;
-          }
-
-          if (playerContext.pausedOnCasting) {
-            video.pause();
-          } else {
-            video.play();
-          }
+        case SessionState.SESSION_ENDED:
+          handleCastSessionEnded(session, video, playerContext, w);
           break;
-        }
       }
     }
   );
@@ -436,7 +461,8 @@ function disconnectIfCastFinished() {
 
 function getStoredVolume(playerContext: any) {
   const storedVolume = localStorage.getItem("media-volume");
-  const mediaVolume = storedVolume !== null ? parseFloat(storedVolume) : 1;
+  const mediaVolume =
+    storedVolume === null ? 1 : Number.parseFloat(storedVolume);
   const isMuted = mediaVolume === 0;
   playerContext.isMuted = isMuted;
   return { isMuted, mediaVolume };
@@ -730,6 +756,91 @@ function buildCastCustomData(drmConfig: CastDrmConfig): CastCustomData {
   return customData;
 }
 
+function logCastMediaStatus(media: any, label: string): void {
+  if (!media) return;
+  const status: Record<string, unknown> = {
+    playerState: media.playerState,
+    estimatedTime: media.getEstimatedTime?.(),
+  };
+  if (media.idleReason != null) {
+    status.idleReason = media.idleReason;
+    status._hint =
+      "idleReason set = receiver had a problem (LOAD_FAILED / CORS / DRM license failure)";
+  }
+  castLog(label, status);
+}
+
+// Poll the receiver for media-session diagnostics until playback starts or the
+// attempt budget is exhausted. Stops diagnostic polling once the stream is PLAYING.
+function pollCastDiagnostics(session: any): void {
+  let diagnosticTicks = 0;
+  const diagnosticInterval = window.setInterval(() => {
+    requestAnimationFrame(() => {
+      const media = session.getMediaSession();
+      if (media) {
+        logCastMediaStatus(media, `TV status #${++diagnosticTicks}`);
+
+        if (media.playerState === "PLAYING") {
+          window.clearInterval(diagnosticInterval);
+          castLog("✅ Stream is PLAYING on Chromecast!");
+        }
+
+        if (
+          typeof media.addUpdateListener === "function" &&
+          diagnosticTicks === 1
+        ) {
+          media.addUpdateListener((isAlive: boolean) => {
+            castLog("TV media update", {
+              isAlive,
+              playerState: media.playerState,
+              idleReason: media.idleReason,
+            });
+          });
+        }
+      } else {
+        castLog(`TV status #${++diagnosticTicks}`, {
+          mediaSession: "not ready yet",
+        });
+      }
+      if (diagnosticTicks >= 10) window.clearInterval(diagnosticInterval);
+    });
+  }, 2000);
+}
+
+// Attempt to play the cast media session, retrying until it becomes available.
+function tryCastPlay(
+  session: any,
+  lastPlaybackTime: number,
+  attempt: number
+): void {
+  const media = session.getMediaSession();
+  if (media) {
+    logCastMediaStatus(media, "tryPlay");
+    if (media.playerState === "PLAYING") {
+      castLog("Already PLAYING");
+      if (lastPlaybackTime > 0)
+        setTimeout(() => seekChromecastProgressbar(lastPlaybackTime), 300);
+      return;
+    }
+    castLog("Calling media.play()", { attempt });
+    media.play(
+      null,
+      () => {
+        castLog("media.play() success");
+        if (lastPlaybackTime > 0)
+          setTimeout(() => seekChromecastProgressbar(lastPlaybackTime), 300);
+      },
+      (err: unknown) => castWarn(CAST_LOG_PREFIX, "media.play() error", err)
+    );
+  } else if (attempt < 6) {
+    setTimeout(() => tryCastPlay(session, lastPlaybackTime, attempt + 1), 600);
+  } else {
+    castLog(
+      "Media session not available after retries — TV may be stuck or stream unreachable"
+    );
+  }
+}
+
 function sendMediaToChromecast(
   context: any,
   video: HTMLVideoElement,
@@ -744,16 +855,17 @@ function sendMediaToChromecast(
   }
 
   const hlsUrl =
-    playerContext.hls && typeof (playerContext.hls as any).url === "string"
-      ? (playerContext.hls as any).url
+    playerContext.hls && typeof playerContext.hls.url === "string"
+      ? playerContext.hls.url
       : "";
-  const initialUrl = (
-    hlsUrl && hlsUrl.trim() !== ""
-      ? hlsUrl
-      : streamUrl && String(streamUrl).trim() !== ""
-        ? streamUrl
-        : video.currentSrc || video.src
-  ) as string;
+  let initialUrl: string;
+  if (hlsUrl && hlsUrl.trim() !== "") {
+    initialUrl = hlsUrl;
+  } else if (streamUrl && String(streamUrl).trim() !== "") {
+    initialUrl = streamUrl;
+  } else {
+    initialUrl = video.currentSrc || video.src;
+  }
 
   if (!initialUrl || initialUrl.trim() === "") {
     castError(
@@ -915,92 +1027,10 @@ function sendMediaToChromecast(
         video.pause();
         freezeVideoWhileUpdatingProgress(video, playerContext);
 
-        const logMediaStatus = (media: any, label: string) => {
-          if (!media) return;
-          const status: Record<string, unknown> = {
-            playerState: media.playerState,
-            estimatedTime: media.getEstimatedTime?.(),
-          };
-          if (media.idleReason != null) {
-            status.idleReason = media.idleReason;
-            status._hint =
-              "idleReason set = receiver had a problem (LOAD_FAILED / CORS / DRM license failure)";
-          }
-          castLog(label, status);
-        };
+        // Stop diagnostic polling once the media session appears and is PLAYING.
+        pollCastDiagnostics(session);
 
-        // FIX: Stop diagnostic polling once media session appears and is PLAYING
-        let diagnosticTicks = 0;
-        let foundPlaying = false;
-        const diagnosticInterval = window.setInterval(() => {
-          requestAnimationFrame(() => {
-            const media = session.getMediaSession();
-            if (media) {
-              logMediaStatus(media, `TV status #${++diagnosticTicks}`);
-
-              if (media.playerState === "PLAYING") {
-                foundPlaying = true;
-                window.clearInterval(diagnosticInterval);
-                castLog("✅ Stream is PLAYING on Chromecast!");
-              }
-
-              if (
-                typeof media.addUpdateListener === "function" &&
-                diagnosticTicks === 1
-              ) {
-                media.addUpdateListener((isAlive: boolean) => {
-                  castLog("TV media update", {
-                    isAlive,
-                    playerState: media.playerState,
-                    idleReason: media.idleReason,
-                  });
-                });
-              }
-            } else {
-              castLog(`TV status #${++diagnosticTicks}`, {
-                mediaSession: "not ready yet",
-              });
-            }
-            if (diagnosticTicks >= 10) window.clearInterval(diagnosticInterval);
-          });
-        }, 2000);
-
-        const tryPlay = (attempt: number) => {
-          const media = session.getMediaSession();
-          if (media) {
-            logMediaStatus(media, "tryPlay");
-            if (media.playerState === "PLAYING") {
-              castLog("Already PLAYING");
-              if (lastPlaybackTime > 0)
-                setTimeout(
-                  () => seekChromecastProgressbar(lastPlaybackTime),
-                  300
-                );
-              return;
-            }
-            castLog("Calling media.play()", { attempt });
-            media.play(
-              null,
-              () => {
-                castLog("media.play() success");
-                if (lastPlaybackTime > 0)
-                  setTimeout(
-                    () => seekChromecastProgressbar(lastPlaybackTime),
-                    300
-                  );
-              },
-              (err: unknown) =>
-                castWarn(CAST_LOG_PREFIX, "media.play() error", err)
-            );
-          } else if (attempt < 6) {
-            setTimeout(() => tryPlay(attempt + 1), 600);
-          } else {
-            castLog(
-              "Media session not available after retries — TV may be stuck or stream unreachable"
-            );
-          }
-        };
-        tryPlay(0);
+        tryCastPlay(session, lastPlaybackTime, 0);
 
         const { mediaVolume, isMuted } = getStoredVolume(playerContext);
         syncVolumeWithChromecast(mediaVolume, isMuted);

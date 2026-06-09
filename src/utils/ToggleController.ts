@@ -252,7 +252,7 @@ function PlaylistNextButtonClickHandler(context: any) {
     try {
       if (typeof context.customNext === "function") {
         // Allow users to provide their own handler (receives context)
-        context.customNext.call(context, context);
+        context.customNext(context);
         return;
       }
     } catch (err) {
@@ -270,7 +270,7 @@ function PlaylistPrevButtonClickHandler(context: any) {
     try {
       if (typeof context.customPrev === "function") {
         // Allow users to provide their own handler (receives context)
-        context.customPrev.call(context, context);
+        context.customPrev(context);
         return;
       }
     } catch (err) {
@@ -445,7 +445,7 @@ function toggleSubtitlesMenu(context: any) {
   }
 
   while (context.subtitleMenu.firstChild) {
-    context.subtitleMenu.removeChild(context.subtitleMenu.firstChild);
+    context.subtitleMenu.firstChild.remove();
   }
 
   const hideSubtitlesButton = documentObject.createElement("button");

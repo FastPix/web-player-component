@@ -3,12 +3,7 @@ import type { HlsConfig, Hls as HlsInstanceType } from "hls.js";
 import { getHlsConstructor, loadHlsFromCdn } from "./loadHlsFromCdn.js";
 import { hideError, showError } from "./ErrorElement.js";
 import { hideLoader, hideMenus, showLoader } from "./DomVisibilityManager.js";
-import {
-  hideShowSubtitlesMenu,
-  toggleAudioMenu,
-  togglePlaybackRateButtons,
-  toggleResolutionMenu,
-} from "./ToggleController.js";
+import { toggleAudioMenu, toggleResolutionMenu } from "./ToggleController.js";
 import { documentObject } from "./CustomElements.js";
 import { isChromecastConnected } from "./CastHandler.js";
 import {
@@ -50,10 +45,10 @@ const configHls: Partial<HlsConfig> = {
 
   // ABR: fast start + upgrade when network improves
   abrMaxWithRealBitrate: true,
-  abrEwmaFastLive: 2.0,
-  abrEwmaSlowLive: 8.0,
-  abrEwmaFastVoD: 3.0, // VOD: react quickly to bandwidth changes
-  abrEwmaSlowVoD: 9.0, // VOD: smooth estimate, still allows upgrade when network improves
+  abrEwmaFastLive: 2,
+  abrEwmaSlowLive: 8,
+  abrEwmaFastVoD: 3, // VOD: react quickly to bandwidth changes
+  abrEwmaSlowVoD: 9, // VOD: smooth estimate, still allows upgrade when network improves
   abrBandWidthUpFactor: 0.85, // Use 85% of estimated bandwidth for upgrade → switch up sooner when headroom exists
   abrBandWidthFactor: 0.8, // Slightly conservative on initial pick for stability
 
@@ -72,7 +67,7 @@ const hlsInstance: HlsInstanceType | null = null;
 async function setupSafariFairPlayDRM(context: any) {
   const fairplayConfig = context.config.drmSystems["com.apple.fps"];
 
-  if (!fairplayConfig || !fairplayConfig.licenseUrl) {
+  if (!fairplayConfig?.licenseUrl) {
     console.warn("No FairPlay license URL configured for Safari");
     return;
   }
@@ -397,17 +392,6 @@ function setupErrorHandling(context: any, streamType: string | null) {
     }
   }
 
-  function keySystemErrorHandlingNonFatal(context: any, details: any) {
-    // Handle non-fatal key system errors
-    if (details.startsWith("KEY_SYSTEM")) {
-      showError(
-        context,
-        "A DRM error occurred, but the player is attempting to recover."
-      );
-      context.hls.recoverMediaError(); // Attempt recovery for non-fatal key system errors
-    }
-  }
-
   function mediaErrorHandlingNonFatal(context: any, fatal: boolean, type: any) {
     // Handle media errors (buffering, stalling, etc.)
     if (type === HlsApi().ErrorTypes.MEDIA_ERROR) {
@@ -467,14 +451,25 @@ function setupErrorHandling(context: any, streamType: string | null) {
 }
 
 // Function to handle on-demand errors
+// Handle non-fatal key system (DRM) errors by attempting media recovery.
+function keySystemErrorHandlingNonFatal(context: any, details: any) {
+  if (details.startsWith("KEY_SYSTEM")) {
+    showError(
+      context,
+      "A DRM error occurred, but the player is attempting to recover."
+    );
+    context.hls.recoverMediaError(); // Attempt recovery for non-fatal key system errors
+  }
+}
+
 function handleOnDemandErrors(context: any, data: any) {
   if (data.fatal) {
-    if (data.response && data.response.code === 404) {
+    if (data.response?.code === 404) {
       showError(
         context,
         "The video you are trying to access is not available."
       );
-    } else if (data.response && data.response.code === 500) {
+    } else if (data.response?.code === 500) {
       showError(
         context,
         "Server error while loading the video. Please try again later."
@@ -487,12 +482,11 @@ function handleOnDemandErrors(context: any, data: any) {
 function handleLiveStreamErrors(context: any, data: any) {
   if (data.fatal) {
     if (
-      data.response &&
-      data.response.code === 404 &&
+      data.response?.code === 404 &&
       data.details === HlsApi().ErrorDetails.MANIFEST_LOAD_ERROR
     ) {
       showError(context, "No live stream is currently active on this channel.");
-    } else if (data.response && data.response.code === 403) {
+    } else if (data.response?.code === 403) {
       showError(context, "Invalid token. Please check your access rights.");
     }
   }
@@ -682,7 +676,7 @@ function setupResolutionUI(context: any, levels: any) {
   // Clear previous resolution buttons to avoid duplicates
   if (context.resolutionMenu) {
     while (context.resolutionMenu.firstChild) {
-      context.resolutionMenu.removeChild(context.resolutionMenu.firstChild);
+      context.resolutionMenu.firstChild.remove();
     }
   }
   context.resolutionButtons = [];
@@ -690,8 +684,8 @@ function setupResolutionUI(context: any, levels: any) {
   let levelsArray = levels.map((item: { height: any }) => item.height);
 
   if (levelsArray[0] === 0) {
-    context.bottomRightDiv.removeChild(context.resolutionMenuButton);
-    context.bottomRightDiv.removeChild(context.pipButton);
+    context.resolutionMenuButton.remove();
+    context.pipButton.remove();
     return;
   }
 
@@ -792,66 +786,89 @@ function dedupeByLabel(tracks: TrackInfo[]): TrackInfo[] {
  * Helper: returns formatted audio tracks from HLS instance.
  * Used by player.getAudioTracks() to expose tracks to external UIs.
  */
+// Match the optional default-audio-track attribute (by NAME, case-insensitive).
+// Example: <fastpix-player default-audio-track="French">. Returns -1 if unset/unmatched.
+function audioIndexFromAttribute(context: any, rawTracks: any[]): number {
+  const defaultAudioName = context.getAttribute?.("default-audio-track");
+  if (typeof defaultAudioName === "string" && defaultAudioName.trim()) {
+    const key = defaultAudioName.trim().toLowerCase();
+    return rawTracks.findIndex(
+      (t: any) =>
+        ((t?.name ?? "") as string).toString().trim().toLowerCase() === key
+    );
+  }
+  return -1;
+}
+
+// Pick the default track index from manifest/attribute hints (no hls.audioTrack check):
+// 1. default-audio-track attribute (by NAME, case-insensitive)
+// 2. Otherwise the default track (default: true flag)
+// 3. Otherwise a track named "default"
+// 4. Otherwise index 0 (or -1 when there are no tracks)
+function resolveDefaultAudioIndex(context: any, tracks: any[]): number {
+  if (!Array.isArray(tracks) || tracks.length === 0) return -1;
+
+  const byAttribute = audioIndexFromAttribute(context, tracks);
+  if (byAttribute >= 0) return byAttribute;
+
+  const byDefaultFlag = tracks.findIndex((t: any) => t?.default === true);
+  if (byDefaultFlag >= 0) return byDefaultFlag;
+
+  const byDefaultName = tracks.findIndex(
+    (t: any) => (t?.name ?? "").toString().toLowerCase() === "default"
+  );
+  if (byDefaultName >= 0) return byDefaultName;
+
+  return 0; // Fall back to first track
+}
+
+// Determine the current audio track index: prefer a valid hls.audioTrack,
+// otherwise fall back to the manifest/attribute default.
+function resolveCurrentAudioIndex(
+  context: any,
+  hlsAny: any,
+  rawTracks: any[]
+): number {
+  if (typeof hlsAny?.audioTrack === "number" && hlsAny.audioTrack >= 0) {
+    return hlsAny.audioTrack;
+  }
+  return resolveDefaultAudioIndex(context, rawTracks);
+}
+
+// Keep id as the underlying HLS index so it's stable even if we de-dupe display entries.
+function toAudioTrackInfo(
+  t: any,
+  index: number,
+  currentIndex: number
+): TrackInfo {
+  const lang = (t?.lang ?? "").toString().trim();
+  return {
+    id: index,
+    label: (t?.name ?? "").toString().trim() || lang || `Track ${index + 1}`,
+    language: lang || undefined,
+    isDefault: !!t?.default,
+    isCurrent: index === currentIndex,
+  };
+}
+
 function getFormattedAudioTracks(context: any): {
   audioTracks: TrackInfo[];
   currentAudioTrackId: number | null;
 } {
   const hlsAny: any = context.hls;
   // Use audioTracksRetrieved (from MANIFEST_PARSED) or fall back to hls.audioTracks
-  const rawTracks: any[] = Array.isArray(context.audioTracksRetrieved)
-    ? context.audioTracksRetrieved
-    : Array.isArray(hlsAny?.audioTracks)
-      ? hlsAny.audioTracks
-      : [];
-
-  // Determine current track index:
-  // 1. Use hls.audioTrack if it's a valid index (>= 0)
-  // 2. Otherwise find the default track (default: true flag)
-  // 3. Otherwise a track named "default"
-  // 4. Otherwise use index 0
-  let currentIndex: number =
-    typeof hlsAny?.audioTrack === "number" && hlsAny.audioTrack >= 0
-      ? hlsAny.audioTrack
-      : -1;
-
-  if (currentIndex < 0 && rawTracks.length > 0) {
-    // Optional: default-audio-track attribute by NAME (case-insensitive).
-    // Example: <fastpix-player default-audio-track="French">
-    const defaultAudioName = context.getAttribute?.("default-audio-track");
-    if (typeof defaultAudioName === "string" && defaultAudioName.trim()) {
-      const key = defaultAudioName.trim().toLowerCase();
-      const byName = rawTracks.findIndex(
-        (t: any) =>
-          ((t?.name ?? "") as string).toString().trim().toLowerCase() === key
-      );
-      if (byName >= 0) currentIndex = byName;
-    }
-
-    // If not set, find default track from manifest
-    if (currentIndex < 0) {
-      currentIndex = rawTracks.findIndex((t: any) => t?.default === true);
-    }
-    if (currentIndex < 0) {
-      currentIndex = rawTracks.findIndex(
-        (t: any) => (t?.name ?? "").toString().toLowerCase() === "default"
-      );
-    }
-    if (currentIndex < 0) {
-      currentIndex = 0; // Fall back to first track
-    }
+  let rawTracks: any[] = [];
+  if (Array.isArray(context.audioTracksRetrieved)) {
+    rawTracks = context.audioTracksRetrieved;
+  } else if (Array.isArray(hlsAny?.audioTracks)) {
+    rawTracks = hlsAny.audioTracks;
   }
 
-  const audioTracksAll: TrackInfo[] = rawTracks.map((t, index) => {
-    const lang = (t?.lang ?? "").toString().trim();
-    return {
-      // Keep id as the underlying HLS index so it's stable even if we de-dupe display entries.
-      id: index,
-      label: (t?.name ?? "").toString().trim() || lang || `Track ${index + 1}`,
-      language: lang || undefined,
-      isDefault: !!t?.default,
-      isCurrent: index === currentIndex,
-    };
-  });
+  const currentIndex = resolveCurrentAudioIndex(context, hlsAny, rawTracks);
+
+  const audioTracksAll: TrackInfo[] = rawTracks.map((t, index) =>
+    toAudioTrackInfo(t, index, currentIndex)
+  );
 
   const audioTracks = dedupeByLabel(audioTracksAll);
   const currentTrack = audioTracksAll.find((t) => t.isCurrent);
@@ -869,7 +886,7 @@ function getFormattedSubtitleTracks(context: any): {
   currentSubtitleTrackId: number | null;
 } {
   const video = context.video as HTMLVideoElement | undefined;
-  if (!video || !video.textTracks) {
+  if (!video?.textTracks) {
     return { subtitleTracks: [], currentSubtitleTrackId: null };
   }
 
@@ -931,33 +948,7 @@ function rebuildAudioMenuUI(context: any) {
 }
 
 function setupAudioTracksUI(context: any, audioTracks: any) {
-  // Determine default track:
-  // 1. Prefer default-audio-track attribute by NAME (case-insensitive)
-  // 2. Otherwise prefer manifest default flag
-  // 3. Otherwise a track named "default"
-  // 4. Otherwise index 0
-  let defaultIndex = -1;
-  if (Array.isArray(audioTracks) && audioTracks.length > 0) {
-    const defaultAudioName = context.getAttribute?.("default-audio-track");
-    if (typeof defaultAudioName === "string" && defaultAudioName.trim()) {
-      const key = defaultAudioName.trim().toLowerCase();
-      const byName = audioTracks.findIndex(
-        (t: any) => (t?.name ?? "").toString().trim().toLowerCase() === key
-      );
-      if (byName >= 0) defaultIndex = byName;
-    }
-    if (defaultIndex === -1) {
-      defaultIndex = audioTracks.findIndex((t: any) => t?.default === true);
-    }
-    if (defaultIndex === -1) {
-      defaultIndex = audioTracks.findIndex(
-        (t: any) => (t?.name ?? "").toString().toLowerCase() === "default"
-      );
-    }
-    if (defaultIndex === -1) {
-      defaultIndex = 0;
-    }
-  }
+  const defaultIndex = resolveDefaultAudioIndex(context, audioTracks);
 
   // Apply default selection (do not emit change event here)
   if (
@@ -1019,7 +1010,7 @@ function logAudioSwitchElapsedSec(
   fpAudioDebugLog(context, "audio-switch timing (s)", {
     phase,
     elapsedSec,
-    ...(extra ?? {}),
+    ...extra,
   });
 }
 
@@ -1051,7 +1042,7 @@ function logAudioSwitchTotalDurationSummary(
 function audioSwitchResumeIfWasPlaying(context: any, vid?: HTMLVideoElement) {
   const v = vid ?? (context?.video as HTMLVideoElement | undefined);
   if (!v || context?.__fpAudioSwitchUserHadPaused) return;
-  void v.play().catch(() => {});
+  v.play().catch(() => {});
 }
 
 /** One loader for the whole audio-switch operation; `showLoader` already no-ops if visible. */
@@ -1160,7 +1151,7 @@ function nudgeVideoElementOnly(context: any): void {
     /* ignore */
   }
   requestAnimationFrame(() => {
-    void vid.play().catch(() => {});
+    vid.play().catch(() => {});
   });
 }
 
@@ -1171,7 +1162,7 @@ const FP_DIRECT_RESUME_THROTTLE_MS = 380;
  * (`AUDIO_TRACK_SWITCHED` fires only after buffers are ready, often ~0.5–2s later).
  */
 function kickHlsLoadAtPlayhead(context: any): void {
-  const hlsAny = context?.hls as any;
+  const hlsAny = context?.hls;
   const vid = context?.video as HTMLVideoElement | undefined;
   if (!hlsAny || !vid || !Number.isFinite(vid.currentTime)) return;
   try {
@@ -1192,7 +1183,7 @@ function directResumePlaybackAfterAudioTrackChange(
   context: any,
   force?: boolean
 ): void {
-  const hlsAny = context?.hls as any;
+  const hlsAny = context?.hls;
   const vid = context?.video as HTMLVideoElement | undefined;
   if (!hlsAny || !vid || !Number.isFinite(vid.currentTime)) {
     fpAudioDebugLog(context, "directResume: skip (no hls/video/time)");
@@ -1237,7 +1228,7 @@ function directResumePlaybackAfterAudioTrackChange(
     } catch {
       /* ignore */
     }
-    void vid.play().catch(() => {});
+    vid.play().catch(() => {});
   };
 
   queueMicrotask(() => tick("1", true));
@@ -1616,9 +1607,9 @@ function emitAudioChange(context: any) {
         ? context.getAudioTracks()
         : [];
     const currentId =
-      context.currentAudioTrackId !== undefined
-        ? context.currentAudioTrackId
-        : null;
+      context.currentAudioTrackId === undefined
+        ? null
+        : context.currentAudioTrackId;
     const currentTrack = Array.isArray(tracks)
       ? (tracks.find((t: any) => t?.isCurrent) ?? null)
       : null;
@@ -1739,7 +1730,10 @@ function handleBufferFlushed(context: any) {
   const currentTime = context.video.currentTime;
   context.video.currentTime = currentTime + 0.001; // Small offset for accuracy
 
-  if (!context.wasPausedBeforeSwitch) {
+  if (context.wasPausedBeforeSwitch) {
+    hideLoader(context);
+    context.resolutionSwitching = false;
+  } else {
     context.video
       .play()
       .then(() => {
@@ -1756,9 +1750,6 @@ function handleBufferFlushed(context: any) {
         context.isBufferFlushed = true;
         context.resolutionSwitching = false;
       });
-  } else {
-    hideLoader(context);
-    context.resolutionSwitching = false;
   }
 }
 

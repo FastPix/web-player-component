@@ -1,0 +1,47 @@
+trigger:
+- feature/playlist-2
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  vmImageName: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  displayName: Build and push stage
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: $(vmImageName)  # Ensuring variable usage
+    steps:
+    - task: SonarCloudPrepare@1
+      displayName: 'Prepare SonarQube Analysis'
+      inputs:
+        SonarCloud: 'sdk_sonar'
+        organization: 'fastpix'
+        cliProjectKey: 'FastPix_html5-player-sdk'
+        projectName: 'html5-player-sdk'
+        scannerMode: 'CLI'
+        configMode: 'manual'
+        extraProperties: |
+          sonar.projectKey=FastPix_html5-player-sdk
+          sonar.projectName=html5-player-sdk
+          sonar.exclusions=demo/**,src/utils/backup.ts
+
+    - task: SonarCloudAnalyze@1
+      displayName: 'Run SonarQube Code Analysis'
+      
+    - task: SonarCloudPublish@1
+      displayName: 'Publish SonarQube Quality Gate Results'
+      inputs:
+        pollingTimeoutSec: '300'
+
+    - script: echo Hello, world!
+      displayName: 'Run a one-line script'
+
+    - script: |
+        echo Add other tasks to build, test, and deploy your project.
+        echo See https://aka.ms/yaml
+      displayName: 'Run a multi-line script'

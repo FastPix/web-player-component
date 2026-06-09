@@ -1,6 +1,6 @@
 {
   "name": "@fastpix/fp-player",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "description": "FastPix Player SDK is a customizable video player for on-demand and live streaming.",
   "type": "module",
   "main": "./dist/player.js",
@@ -39,7 +39,7 @@
   "author": "FastPix, Inc",
   "license": "MIT",
   "dependencies": {
-    "@fastpix/video-data-core": "^1.0.7"
+    "@fastpix/video-data-core": "^1.0.8"
   },
   "devDependencies": {
     "esbuild": "^0.27.3",

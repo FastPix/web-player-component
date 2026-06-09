@@ -144,7 +144,7 @@ async function changePlaybackId(newPlaybackId: string, context: any) {
     // destory player
     if (context.hls) {
       context.hls.destroy();
-      const HlsCtor = getHlsConstructor() as new (c?: unknown) => any;
+      const HlsCtor = getHlsConstructor();
       context.hls = new HlsCtor({
         ...configHls,
         startFragPrefetch: startFragPrefetchForStreamType(context.streamType),

@@ -92,9 +92,9 @@ function disableAllSubtitles(
           ? (context as any).getSubtitleTracks()
           : [];
       const currentId =
-        (context as any).currentSubtitleTrackId !== undefined
-          ? (context as any).currentSubtitleTrackId
-          : null;
+        (context as any).currentSubtitleTrackId === undefined
+          ? null
+          : (context as any).currentSubtitleTrackId;
       (context as any).dispatchEvent(
         new CustomEvent("fastpixsubtitlechange", {
           detail: { tracks, currentId, currentTrack: null },
@@ -129,9 +129,9 @@ function changeSubtitleTrack(
           ? (context as any).getSubtitleTracks()
           : [];
       const currentId =
-        (context as any).currentSubtitleTrackId !== undefined
-          ? (context as any).currentSubtitleTrackId
-          : null;
+        (context as any).currentSubtitleTrackId === undefined
+          ? null
+          : (context as any).currentSubtitleTrackId;
       const currentTrack = Array.isArray(tracks)
         ? (tracks.find((t: any) => t?.isCurrent) ?? null)
         : null;

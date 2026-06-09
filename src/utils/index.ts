@@ -594,17 +594,17 @@ function getFormattedDuration(
   duration: number,
   defaultDuration: number
 ): string {
-  if (!isNaN(duration)) {
+  if (!Number.isNaN(duration)) {
     return formatVideoDuration(duration);
   }
-  return !isNaN(defaultDuration)
-    ? formatVideoDuration(defaultDuration)
-    : "0:00";
+  return Number.isNaN(defaultDuration)
+    ? "0:00"
+    : formatVideoDuration(defaultDuration);
 }
 
 function isDurationAvailable(context: any): boolean {
   const d = context?.video?.duration;
-  return typeof d === "number" && !isNaN(d) && (d > 0 || d === Infinity);
+  return typeof d === "number" && !Number.isNaN(d) && (d > 0 || d === Infinity);
 }
 
 function updateTimeDisplay(context: any): void {
@@ -621,15 +621,15 @@ function updateTimeDisplay(context: any): void {
 
   if (showRemainingTime) {
     const remainingTime = duration - currentTime;
-    const isValidTime = !isNaN(remainingTime);
+    const isValidTime = !Number.isNaN(remainingTime);
     currentTimeFormatted = isValidTime
       ? "-" + formatVideoDuration(remainingTime)
       : "0:00";
     durationFormatted = isValidTime ? formatVideoDuration(duration) : "0:00";
   } else {
-    currentTimeFormatted = !isNaN(currentTime)
-      ? formatVideoDuration(currentTime)
-      : "0:00";
+    currentTimeFormatted = Number.isNaN(currentTime)
+      ? "0:00"
+      : formatVideoDuration(currentTime);
     durationFormatted = getFormattedDuration(duration, context.defaultDuration);
   }
 
@@ -639,6 +639,12 @@ function updateTimeDisplay(context: any): void {
     const bufferedPercentage = (context.video.buffered.end(0) / duration) * 100;
     context.bufferedRange.style.width = `${bufferedPercentage}%`;
   }
+}
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end--;
+  return value.slice(0, end);
 }
 
 function receiveAttributes(context: any) {
@@ -680,14 +686,14 @@ function receiveAttributes(context: any) {
     context.getAttribute("thumbnail-time") ?? context.startTimeAttribute;
   context.getThumbnailAttribute = context.getAttribute("thumbnail-time");
   context.thumbnailTimeAttribute =
-    parseFloat(context.getThumbnailAttribute) ||
-    parseFloat(context.thumbnailTime);
+    Number.parseFloat(context.getThumbnailAttribute) ||
+    Number.parseFloat(context.thumbnailTime);
   context.posterAttribute = context.getAttribute("poster");
   context.placeholderAttribute = context.getAttribute("placeholder");
   context.thumbnailUrlAttribute = context.getAttribute("spritesheet-src");
-  const rawBase = (context.thumbnailUrlAttribute ?? "images.fastpix.com")
-    .trim()
-    .replace(/\/+$/, "");
+  const rawBase = stripTrailingSlashes(
+    (context.thumbnailUrlAttribute ?? "images.fastpix.com").trim()
+  );
   context.thumbnailUrlFinal = /^https?:\/\//i.test(rawBase)
     ? rawBase
     : `https://${rawBase.replace(/^\/+/, "")}`;
@@ -745,9 +751,11 @@ function receiveAttributes(context: any) {
   const skipIntroStartAttr = context.getAttribute("skip-intro-start");
   const skipIntroEndAttr = context.getAttribute("skip-intro-end");
   const parsedSkipStart =
-    skipIntroStartAttr != null ? parseFloat(skipIntroStartAttr) : NaN;
+    skipIntroStartAttr == null
+      ? Number.NaN
+      : Number.parseFloat(skipIntroStartAttr);
   const parsedSkipEnd =
-    skipIntroEndAttr != null ? parseFloat(skipIntroEndAttr) : NaN;
+    skipIntroEndAttr == null ? Number.NaN : Number.parseFloat(skipIntroEndAttr);
   context.skipIntroStart = Number.isFinite(parsedSkipStart)
     ? parsedSkipStart
     : null;
@@ -758,7 +766,9 @@ function receiveAttributes(context: any) {
     "next-episode-button-overlay"
   );
   const parsedNextOverlay =
-    nextEpisodeOverlayAttr != null ? parseFloat(nextEpisodeOverlayAttr) : NaN;
+    nextEpisodeOverlayAttr == null
+      ? Number.NaN
+      : Number.parseFloat(nextEpisodeOverlayAttr);
   context.nextEpisodeOverlayStart = Number.isFinite(parsedNextOverlay)
     ? parsedNextOverlay
     : null;

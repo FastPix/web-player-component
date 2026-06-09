@@ -4,7 +4,7 @@ import { formatVideoDuration } from "./index";
 function clearThumbnailElements(context: any) {
   const timeDisplay = context.thumbnail.querySelector(".thumbnailTimeDisplay");
   while (context.thumbnail.firstChild) {
-    context.thumbnail.removeChild(context.thumbnail.firstChild);
+    context.thumbnail.firstChild.remove();
   }
   if (timeDisplay) {
     context.thumbnail.appendChild(timeDisplay);
@@ -60,27 +60,31 @@ interface ThumbnailJson {
 //   1. Legacy: tile_width / tile_height / tiles[] (explicit tile list)
 //   2. Grid:   tileWidth / tileHeight / columns / rows / interval (uniform grid)
 // Normalize both into the legacy shape so downstream code is schema-agnostic.
-function normalizeThumbnailJson(raw: any): ThumbnailJson | null {
-  if (Array.isArray(raw.tiles) && raw.tiles.length > 0) {
-    const tileWidth = raw.tile_width ?? raw.tileWidth ?? 0;
-    const tileHeight = raw.tile_height ?? raw.tileHeight ?? 0;
-    let sheetWidth = Number(raw.sheetWidth) || 0;
-    let sheetHeight = Number(raw.sheetHeight) || 0;
-    if (!sheetWidth || !sheetHeight) {
-      for (const t of raw.tiles) {
-        if (t.x + tileWidth > sheetWidth) sheetWidth = t.x + tileWidth;
-        if (t.y + tileHeight > sheetHeight) sheetHeight = t.y + tileHeight;
-      }
+// Sheet already ships explicit tile coordinates; derive missing sheet dimensions
+// from the tile bounds.
+function normalizeExplicitTiles(raw: any): ThumbnailJson {
+  const tileWidth = raw.tile_width ?? raw.tileWidth ?? 0;
+  const tileHeight = raw.tile_height ?? raw.tileHeight ?? 0;
+  let sheetWidth = Number(raw.sheetWidth) || 0;
+  let sheetHeight = Number(raw.sheetHeight) || 0;
+  if (!sheetWidth || !sheetHeight) {
+    for (const t of raw.tiles) {
+      if (t.x + tileWidth > sheetWidth) sheetWidth = t.x + tileWidth;
+      if (t.y + tileHeight > sheetHeight) sheetHeight = t.y + tileHeight;
     }
-    return {
-      url: typeof raw.url === "string" ? raw.url : "",
-      tile_width: tileWidth,
-      tile_height: tileHeight,
-      sheet_width: sheetWidth,
-      sheet_height: sheetHeight,
-      tiles: raw.tiles,
-    };
   }
+  return {
+    url: typeof raw.url === "string" ? raw.url : "",
+    tile_width: tileWidth,
+    tile_height: tileHeight,
+    sheet_width: sheetWidth,
+    sheet_height: sheetHeight,
+    tiles: raw.tiles,
+  };
+}
+
+// Sheet describes a regular grid (columns/interval); synthesize the tile list.
+function normalizeGridTiles(raw: any): ThumbnailJson | null {
   const cols = Number(raw.columns);
   const interval = Number(raw.interval);
   const tileWidth = Number(raw.tileWidth ?? raw.tile_width);
@@ -105,6 +109,13 @@ function normalizeThumbnailJson(raw: any): ThumbnailJson | null {
       Number(raw.sheetHeight) || Math.ceil(count / cols) * tileHeight,
     tiles,
   };
+}
+
+function normalizeThumbnailJson(raw: any): ThumbnailJson | null {
+  if (Array.isArray(raw.tiles) && raw.tiles.length > 0) {
+    return normalizeExplicitTiles(raw);
+  }
+  return normalizeGridTiles(raw);
 }
 
 // Cache management
@@ -176,7 +187,7 @@ async function fetchThumbnailJson(
     // image URL deterministically from the same endpoint we just fetched.
     // Carry the interval onto the image URL so the JPEG matches the JSON's
     // tile schedule (the API serves a different sheet per interval).
-    const imageQuery = interval != null ? `?interval=${interval}` : "";
+    const imageQuery = interval == null ? "" : `?interval=${interval}`;
     thumbnailJson.url = `${spritesheetSrc}/${playbackId}/${variant}.jpg${imageQuery}`;
     context.spritesheetCache[cacheKey] = thumbnailJson;
     return thumbnailJson;
@@ -233,7 +244,7 @@ function calculateThumbnailDimensions(
   context: any,
   thumbnailJson: ThumbnailJson | null
 ) {
-  const scalingFactor = parseFloat(
+  const scalingFactor = Number.parseFloat(
     getComputedStyle(context.thumbnail).getPropertyValue("--scaling-factor")
   );
   const originalTileWidth = thumbnailJson ? thumbnailJson.tile_width : 0;
@@ -358,7 +369,7 @@ function createThumbnailHandler(
 
 function isInvalidTime(currentTime: number, context: any): boolean {
   return (
-    isNaN(currentTime) ||
+    Number.isNaN(currentTime) ||
     currentTime < 0 ||
     currentTime > context.video.duration
   );
@@ -565,6 +576,12 @@ async function thumbnailSeeking(
   }
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end--;
+  return value.slice(0, end);
+}
+
 function customizeThumbnail(context: any) {
   // Set placeholder as poster if available
   if (context.placeholderAttribute) {
@@ -579,7 +596,7 @@ function customizeThumbnail(context: any) {
     if (raw == null) return "";
     const s = String(raw).trim();
     if (!s || s.toLowerCase() === "null") return "";
-    return s.replace(/\/+$/, "");
+    return stripTrailingSlashes(s);
   };
 
   // spritesheet-src missing → getAttribute is null; String coercions produced "null/pid/thumbnail.jpg"

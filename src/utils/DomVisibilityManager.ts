@@ -168,10 +168,10 @@ function handleTitleContainer(context: any) {
     context.playbackRateButton.style.display = "none";
     context.progressBarContainer.style.display = "none";
 
-    if (!context.hasAttribute("target-live-window")) {
-      context.bottomRightDiv.removeChild(context.playbackRateButton);
-    } else {
+    if (context.hasAttribute("target-live-window")) {
       context.bottomRightDiv.appendChild(context.playbackRateButton);
+    } else {
+      context.playbackRateButton.remove();
     }
     context.timeDisplay.style.display = "none";
 

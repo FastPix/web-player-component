@@ -1,4 +1,4 @@
-import { getHlsConstructor } from "./HlsManager";
+import { getHlsConstructor, runAfterNextPaint } from "./HlsManager";
 import {
   initializeControlsAfterPlayClick,
   toggleVideoPlayback,
@@ -15,8 +15,8 @@ import {
   adjustCurrentTimeBy,
   isChromeBrowser,
   updateTimeDisplay,
+  isDurationAvailable,
 } from "./index";
-import { runAfterNextPaint } from "./HlsManager";
 import { resizeVideoWidth } from "./ResizeVideo";
 import {
   disableAllSubtitles,
@@ -39,110 +39,167 @@ import {
 } from "./CastHandler";
 import { hideError } from "./ErrorElement";
 import { cleanupOverlayAndControls } from "./ShoppableVideo";
-import { isDurationAvailable } from "./index";
+
+// Returns the track currently marked as active, or null when none/invalid.
+function findCurrentTrack(tracks: any): any {
+  return Array.isArray(tracks)
+    ? (tracks.find((t: any) => t?.isCurrent) ?? null)
+    : null;
+}
+
+// On non-Chrome browsers the Cast button is unsupported; drop it if present.
+function removeCastButtonIfNonChrome(context: any): void {
+  if (isChromeBrowser()) return;
+  if (
+    context.castButton &&
+    context.bottomRightDiv &&
+    context.castButton.parentElement === context.bottomRightDiv
+  ) {
+    context.castButton.remove();
+  }
+}
+
+// Find a subtitle/caption track whose label matches `key` (already lower-cased).
+function findSubtitleIndexByLabel(tracksArray: any[], key: string): number {
+  return tracksArray.findIndex((t: any) => {
+    if (!t) return false;
+    if (t.kind !== "subtitles" && t.kind !== "captions") return false;
+    return (t.label || "").toString().trim().toLowerCase() === key;
+  });
+}
+
+// Apply the initial subtitle selection on loadedmetadata: honor
+// disable-hidden-captions, then the default-subtitle-track attribute (by NAME),
+// otherwise fall back to the standard initialization. No change event is emitted
+// since this is an automatic setup path.
+function applyDefaultSubtitleSelection(context: any, tracksArray: any[]): void {
+  if (context.hasAttribute("disable-hidden-captions")) {
+    disableAllSubtitles(context, { emitEvent: false });
+    return;
+  }
+  if (!context.isOnline) return;
+
+  const defaultSubtitleName = context.getAttribute?.("default-subtitle-track");
+  if (typeof defaultSubtitleName !== "string" || !defaultSubtitleName.trim()) {
+    initializeSubtitles(context, tracksArray);
+    return;
+  }
+
+  const key = defaultSubtitleName.trim().toLowerCase();
+  const indexToShow = findSubtitleIndexByLabel(tracksArray, key);
+  if (indexToShow === -1) {
+    initializeSubtitles(context, tracksArray);
+    return;
+  }
+
+  changeSubtitleTrack(context, indexToShow, { emitEvent: false });
+  try {
+    const lang = tracksArray[indexToShow]?.language;
+    if (lang) localStorage.setItem("subtitleLang", lang);
+  } catch {}
+}
+
+// Once subtitle tracks have attached (they can arrive after MANIFEST_PARSED),
+// emit a corrected fastpixtracksready snapshot exactly once.
+function emitTracksReadyIfSubtitlesAppeared(context: any): void {
+  try {
+    const player: any = context;
+    if (typeof player.getSubtitleTracks !== "function") return;
+    const subs = player.getSubtitleTracks();
+    const count = Array.isArray(subs) ? subs.length : 0;
+    const prev =
+      typeof player._lastTracksReadySubtitleCount === "number"
+        ? player._lastTracksReadySubtitleCount
+        : 0;
+    player._lastTracksReadySubtitleCount = count;
+    if (count > 0 && prev === 0 && typeof player.dispatchEvent === "function") {
+      const aud =
+        typeof player.getAudioTracks === "function"
+          ? player.getAudioTracks()
+          : [];
+      player.dispatchEvent(
+        new CustomEvent("fastpixtracksready", {
+          detail: {
+            audioTracks: aud,
+            subtitleTracks: subs,
+            currentAudioId:
+              typeof player.currentAudioTrackId === "number"
+                ? player.currentAudioTrackId
+                : null,
+            currentSubtitleId:
+              typeof player.currentSubtitleTrackId === "number"
+                ? player.currentSubtitleTrackId
+                : null,
+            currentAudioTrackLoaded: findCurrentTrack(aud),
+            currentSubtitleLoaded: findCurrentTrack(subs),
+          },
+        })
+      );
+    }
+  } catch {}
+}
+
+function scheduleTracksReadySnapshot(context: any): void {
+  try {
+    setTimeout(() => {
+      requestAnimationFrame(() => emitTracksReadyIfSubtitlesAppeared(context));
+    }, 0);
+  } catch {}
+}
+
+// Toggle the Skip Intro button within its configured [start, end] window.
+function updateSkipIntroVisibility(context: any, currentTime: number): void {
+  if (
+    context.skipIntroButton &&
+    context.skipIntroStart != null &&
+    context.skipIntroEnd != null
+  ) {
+    if (
+      Number.isFinite(context.skipIntroStart) &&
+      Number.isFinite(context.skipIntroEnd) &&
+      currentTime >= context.skipIntroStart &&
+      currentTime <= context.skipIntroEnd
+    ) {
+      context.skipIntroButton.style.display = "block";
+    } else {
+      context.skipIntroButton.style.display = "none";
+    }
+  } else if (context.skipIntroButton) {
+    context.skipIntroButton.style.display = "none";
+  }
+}
+
+// Toggle the Next Episode button from its configured time until the end,
+// provided another playlist item exists.
+function updateNextEpisodeVisibility(context: any, currentTime: number): void {
+  if (
+    context.nextEpisodeButton &&
+    context.nextEpisodeOverlayStart != null &&
+    Number.isFinite(context.nextEpisodeOverlayStart)
+  ) {
+    const hasNext =
+      Array.isArray(context.playlist) &&
+      context.currentIndex < (context.playlist?.length ?? 0) - 1;
+    if (hasNext && currentTime >= context.nextEpisodeOverlayStart) {
+      context.nextEpisodeButton.style.display = "block";
+    } else {
+      context.nextEpisodeButton.style.display = "none";
+    }
+  } else if (context.nextEpisodeButton) {
+    context.nextEpisodeButton.style.display = "none";
+  }
+}
 
 // connectedCallback
 const videoListeners = (context: any) => {
   if (context) {
     context.isWaitingForKey = false;
     context.video.addEventListener("loadedmetadata", () => {
-      if (!isChromeBrowser()) {
-        if (
-          context.castButton &&
-          context.bottomRightDiv &&
-          context.castButton.parentElement === context.bottomRightDiv
-        ) {
-          context.bottomRightDiv.removeChild(context.castButton);
-        }
-      }
+      removeCastButtonIfNonChrome(context);
       preloadSubtitles(context);
       const tracksArray = Array.from(context.video.textTracks);
-
-      if (context.hasAttribute("disable-hidden-captions")) {
-        // Do not emit fastpixsubtitlechange here: this is an automatic setup path
-        disableAllSubtitles(context, { emitEvent: false });
-      } else if (context.isOnline) {
-        // Optional: default-subtitle-track attribute by NAME (case-insensitive).
-        // Example: <fastpix-player default-subtitle-track="English">
-        const defaultSubtitleName = context.getAttribute?.(
-          "default-subtitle-track"
-        );
-        if (
-          typeof defaultSubtitleName === "string" &&
-          defaultSubtitleName.trim()
-        ) {
-          const key = defaultSubtitleName.trim().toLowerCase();
-          const indexToShow = tracksArray.findIndex((t: any) => {
-            if (!t) return false;
-            if (t.kind !== "subtitles" && t.kind !== "captions") return false;
-            const label = (t.label || "").toString().trim().toLowerCase();
-            return label === key;
-          });
-          if (indexToShow !== -1) {
-            // Do not emit fastpixsubtitlechange: this is an automatic default
-            changeSubtitleTrack(context, indexToShow, { emitEvent: false });
-            try {
-              const lang = (tracksArray[indexToShow] as any)?.language;
-              if (lang) localStorage.setItem("subtitleLang", lang);
-            } catch {}
-          } else {
-            initializeSubtitles(context, tracksArray);
-          }
-        } else {
-          initializeSubtitles(context, tracksArray);
-        }
-      }
-
-      // Subtitles can attach *after* MANIFEST_PARSED; if so, re-emit a corrected tracks snapshot.
-      try {
-        setTimeout(() => {
-          requestAnimationFrame(() => {
-            try {
-              const player: any = context;
-              if (typeof player.getSubtitleTracks !== "function") return;
-              const subs = player.getSubtitleTracks();
-              const count = Array.isArray(subs) ? subs.length : 0;
-              const prev =
-                typeof player._lastTracksReadySubtitleCount === "number"
-                  ? player._lastTracksReadySubtitleCount
-                  : 0;
-              player._lastTracksReadySubtitleCount = count;
-              if (
-                count > 0 &&
-                prev === 0 &&
-                typeof player.dispatchEvent === "function"
-              ) {
-                const aud =
-                  typeof player.getAudioTracks === "function"
-                    ? player.getAudioTracks()
-                    : [];
-                player.dispatchEvent(
-                  new CustomEvent("fastpixtracksready", {
-                    detail: {
-                      audioTracks: aud,
-                      subtitleTracks: subs,
-                      currentAudioId:
-                        typeof player.currentAudioTrackId === "number"
-                          ? player.currentAudioTrackId
-                          : null,
-                      currentSubtitleId:
-                        typeof player.currentSubtitleTrackId === "number"
-                          ? player.currentSubtitleTrackId
-                          : null,
-                      currentAudioTrackLoaded: Array.isArray(aud)
-                        ? (aud.find((t: any) => t?.isCurrent) ?? null)
-                        : null,
-                      currentSubtitleLoaded: Array.isArray(subs)
-                        ? (subs.find((t: any) => t?.isCurrent) ?? null)
-                        : null,
-                    },
-                  })
-                );
-              }
-            } catch {}
-          });
-        }, 0);
-      } catch {}
+      applyDefaultSubtitleSelection(context, tracksArray);
+      scheduleTracksReadySnapshot(context);
     });
 
     // Instead of setTimeout, rely on actual loading:
@@ -207,12 +264,10 @@ const videoListeners = (context: any) => {
     context.video.addEventListener("pause", () => {
       if (isChromecastConnected()) {
         controlCastMedia("pause", context);
-      } else {
+      } else if (!context.__fpAudioSwitchHoldActive) {
         // HLS alt→main hold: programmatic pause to freeze playhead; keep pause icon until real resume
-        if (!context.__fpAudioSwitchHoldActive) {
-          context.playPauseButton.innerHTML = PlayIcon;
-          context.wasManuallyPaused = true;
-        }
+        context.playPauseButton.innerHTML = PlayIcon;
+        context.wasManuallyPaused = true;
       }
       // Always allow user to click play/pause while paused (e.g., during hotspot wait)
       context.playPauseButton.disabled = false;
@@ -391,7 +446,7 @@ const videoListeners = (context: any) => {
         const savedVolume = localStorage.getItem("savedVolume");
 
         if (savedVolume !== null) {
-          context.video.volume = parseFloat(savedVolume);
+          context.video.volume = Number.parseFloat(savedVolume);
           context.volumeControl.value = context.video.volume;
           updateVolumeControlBackground(context);
           updateVolumeButtonIcon(context);
@@ -416,7 +471,7 @@ const videoListeners = (context: any) => {
     function paintProgressBar() {
       const vid = context.video;
       const duration = vid.duration;
-      if (!duration || !isFinite(duration)) return;
+      if (!duration || !Number.isFinite(duration)) return;
 
       const currentTime = getCurrentTime(context);
       const bufferEnd =
@@ -482,44 +537,8 @@ const videoListeners = (context: any) => {
         }
 
         const currentTime = getCurrentTime(context);
-
-        // Toggle Skip Intro button visibility within configured window
-        if (
-          context.skipIntroButton &&
-          context.skipIntroStart != null &&
-          context.skipIntroEnd != null
-        ) {
-          if (
-            Number.isFinite(context.skipIntroStart) &&
-            Number.isFinite(context.skipIntroEnd) &&
-            currentTime >= context.skipIntroStart &&
-            currentTime <= context.skipIntroEnd
-          ) {
-            context.skipIntroButton.style.display = "block";
-          } else {
-            context.skipIntroButton.style.display = "none";
-          }
-        } else if (context.skipIntroButton) {
-          context.skipIntroButton.style.display = "none";
-        }
-
-        // Toggle Next Episode button visibility from configured time till end
-        if (
-          context.nextEpisodeButton &&
-          context.nextEpisodeOverlayStart != null &&
-          Number.isFinite(context.nextEpisodeOverlayStart)
-        ) {
-          const hasNext =
-            Array.isArray(context.playlist) &&
-            context.currentIndex < (context.playlist?.length ?? 0) - 1;
-          if (hasNext && currentTime >= context.nextEpisodeOverlayStart) {
-            context.nextEpisodeButton.style.display = "block";
-          } else {
-            context.nextEpisodeButton.style.display = "none";
-          }
-        } else if (context.nextEpisodeButton) {
-          context.nextEpisodeButton.style.display = "none";
-        }
+        updateSkipIntroVisibility(context, currentTime);
+        updateNextEpisodeVisibility(context, currentTime);
 
         updateTimeDisplay(context);
         activeChapter(context);
@@ -588,7 +607,7 @@ const videoListeners = (context: any) => {
       defaultValue: number
     ): number {
       return context.hasAttribute(attr)
-        ? parseInt(context.getAttribute(attr)!) || defaultValue
+        ? Number.parseInt(context.getAttribute(attr)!) || defaultValue
         : defaultValue;
     }
 
@@ -641,7 +660,7 @@ const videoListeners = (context: any) => {
       seekTime: number,
       bufferEnd: number
     ) {
-      if (isFinite(seekTime)) {
+      if (Number.isFinite(seekTime)) {
         if (seekTime > bufferEnd) {
           showLoader(context);
         }
@@ -681,7 +700,7 @@ const videoListeners = (context: any) => {
 
     context.progressBar.addEventListener("input", () => {
       const duration = context.video.duration;
-      if (!isFinite(duration)) {
+      if (!Number.isFinite(duration)) {
         console.error("Video duration is not finite, cannot seek.");
         return;
       }
@@ -756,10 +775,10 @@ const videoListeners = (context: any) => {
 
       const noVolumePrefAttribute = context.hasAttribute("no-volume-pref");
 
-      if (!noVolumePrefAttribute) {
-        localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
-      } else {
+      if (noVolumePrefAttribute) {
         localStorage.removeItem("savedVolumeIcon");
+      } else {
+        localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
       }
 
       // Update video volume
@@ -779,12 +798,12 @@ const videoListeners = (context: any) => {
 
       syncVolumeWithChromecast(volume, context.video.muted);
 
-      if (!noVolumePrefAttribute) {
-        localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
-        localStorage.setItem("savedVolume", context.video.volume.toString());
-      } else {
+      if (noVolumePrefAttribute) {
         localStorage.removeItem("savedVolumeIcon");
         localStorage.removeItem("savedVolume");
+      } else {
+        localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
+        localStorage.setItem("savedVolume", context.video.volume.toString());
       }
 
       hideMenus(context);
@@ -796,7 +815,7 @@ const videoListeners = (context: any) => {
       // Check if a saved volume exists in localStorage
       const savedVolume = localStorage.getItem("savedVolume");
       if (savedVolume !== null && !context.hasAttribute("no-volume-pref")) {
-        const parsedVolume = parseFloat(savedVolume);
+        const parsedVolume = Number.parseFloat(savedVolume);
         context.video.volume = parsedVolume; // Restore saved volume
         context.volumeControl.value = parsedVolume.toString();
         updateVolumeControlBackground(context); // Update UI background
@@ -821,10 +840,10 @@ const videoListeners = (context: any) => {
         context.video.preload = "metadata";
       }
 
-      if (context.crossoriginAttribute !== null) {
-        context.video.crossOrigin = context.crossoriginAttribute;
-      } else {
+      if (context.crossoriginAttribute === null) {
         context.video.crossOrigin = "";
+      } else {
+        context.video.crossOrigin = context.crossoriginAttribute;
       }
 
       resizeVideoWidth(context);

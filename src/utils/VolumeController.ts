@@ -31,13 +31,13 @@ function updateVolumeButtonIconiOS(context: any) {
 }
 
 function updateVolumeButtonIcon(context: any) {
-  const volume = parseFloat(context.volumeControl.value);
+  const volume = Number.parseFloat(context.volumeControl.value);
   const noVolumePrefAttribute = context.hasAttribute("no-volume-pref");
 
-  if (!noVolumePrefAttribute) {
-    localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
-  } else {
+  if (noVolumePrefAttribute) {
     localStorage.removeItem("savedVolumeIcon");
+  } else {
+    localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
   }
 
   if (context.video.muted) {
@@ -114,12 +114,12 @@ function adjustVolume(
   updateVolumeControlBackground(context);
   updateVolumeButtonIcon(context);
 
-  if (!noVolumePref) {
-    localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
-    localStorage.setItem("savedVolume", newVolume.toString());
-  } else {
+  if (noVolumePref) {
     localStorage.removeItem("savedVolumeIcon");
     localStorage.removeItem("savedVolume");
+  } else {
+    localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
+    localStorage.setItem("savedVolume", newVolume.toString());
   }
 
   if (isChromecastConnected()) {
@@ -145,7 +145,7 @@ function restoreVolumeSettings(context: any) {
 
   if (savedVolume !== null) {
     context.primaryColor = context.getAttribute("primary-color") ?? "#F5F5F5";
-    context.video.volume = parseFloat(savedVolume);
+    context.video.volume = Number.parseFloat(savedVolume);
     context.volumeControl.value = savedVolume;
     const gradient = `linear-gradient(to right, ${context.primaryColor} 0%, ${
       context.primaryColor
@@ -158,10 +158,10 @@ function restoreVolumeSettings(context: any) {
 
 function toggleMuteUnmute(context: any, noVolumePrefAttribute: boolean) {
   // Save the current volume icon in localStorage if applicable
-  if (!noVolumePrefAttribute) {
-    localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
-  } else {
+  if (noVolumePrefAttribute) {
     localStorage.removeItem("savedVolumeIcon");
+  } else {
+    localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
   }
 
   // Retrieve saved volume from local storage
@@ -192,15 +192,15 @@ function toggleMuteUnmute(context: any, noVolumePrefAttribute: boolean) {
   updateVolumeButtonIconiOS(context);
 
   // Handle localStorage based on mute state
-  if (!noVolumePrefAttribute) {
+  if (noVolumePrefAttribute) {
+    localStorage.removeItem("savedVolume");
+    localStorage.removeItem("savedVolumeIcon");
+  } else {
     localStorage.setItem(
       "savedVolume",
       context.video.muted ? "0" : context.video.volume.toString()
     );
     localStorage.setItem("savedVolumeIcon", context.volumeButton.innerHTML);
-  } else {
-    localStorage.removeItem("savedVolume");
-    localStorage.removeItem("savedVolumeIcon");
   }
 }
 

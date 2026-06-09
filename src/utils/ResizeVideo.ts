@@ -9,7 +9,7 @@ function timeDisplayVisibleDisplay(context: any): "" | "none" {
 // Helper function to safely remove child element
 function removeChildIfExists(parent: any, child: any) {
   if (parent && child && parent.contains(child)) {
-    parent.removeChild(child);
+    child.remove();
   }
 }
 
@@ -70,23 +70,21 @@ function removeUnusedControlsForMiniDevices(context: any) {
 function removeUnusedControlsForSmallDevices(context: any) {
   if (window.innerWidth > 768) return; // Exit if not a mini device
   if (context.leftControls.contains(context.forwardRewindControlsWrapper)) {
-    context.leftControls.removeChild(context.forwardRewindControlsWrapper);
+    context.forwardRewindControlsWrapper.remove();
   }
   if (
     context.mobileControlButtonsBlock.contains(
       context.forwardRewindControlsWrapper
     )
   ) {
-    context.mobileControlButtonsBlock.removeChild(
-      context.forwardRewindControlsWrapper
-    );
+    context.forwardRewindControlsWrapper.remove();
   }
   if (context.leftControls.contains(context.timeDisplay)) {
-    context.leftControls.removeChild(context.timeDisplay);
+    context.timeDisplay.remove();
   }
 
   if (context.forwardRewindControlsWrapper.contains(context.rewindBackButton)) {
-    context.forwardRewindControlsWrapper.removeChild(context.rewindBackButton);
+    context.rewindBackButton.remove();
   }
 
   if (
@@ -94,7 +92,7 @@ function removeUnusedControlsForSmallDevices(context: any) {
       context.fastForwardButton
     )
   ) {
-    context.forwardRewindControlsWrapper.removeChild(context.fastForwardButton);
+    context.fastForwardButton.remove();
   }
 
   // Show cartButton on small devices
@@ -117,19 +115,19 @@ function modifyControlsForMobileDevices(context: any) {
   if (
     context.controlsContainer.getElementsByClassName("timeDisplay").length > 0
   ) {
-    context.leftControls.removeChild(context.timeDisplay);
+    context.timeDisplay.remove();
   }
   if (
     context.forwardRewindControlsWrapper.hasChildNodes(context.rewindBackButton)
   ) {
-    context.forwardRewindControlsWrapper.removeChild(context.rewindBackButton);
+    context.rewindBackButton.remove();
   }
   if (
     context.forwardRewindControlsWrapper.hasChildNodes(
       context.fastForwardButton
     )
   ) {
-    context.forwardRewindControlsWrapper.removeChild(context.fastForwardButton);
+    context.fastForwardButton.remove();
   }
 
   // Show cartButton on responsive devices
@@ -150,7 +148,7 @@ function modifyControlsForMobileDevices(context: any) {
 
 function removeMobileControls(context: any) {
   if (context.controlsContainer.hasChildNodes(context.mobileControls)) {
-    context.controlsContainer.removeChild(context.mobileControls);
+    context.mobileControls.remove();
   }
 }
 
@@ -263,7 +261,7 @@ function hidePlaylistButtonIfNoPlaylist(context: any) {
     !context.controlsContainer.classList.contains("hasPlaylist") &&
     context.bottomRightDiv.contains(context.playlistButton)
   ) {
-    context.bottomRightDiv.removeChild(context.playlistButton);
+    context.playlistButton.remove();
   }
 }
 
@@ -425,8 +423,7 @@ function responsiveDevice(
   context.progressBarContainer.classList.add("mobile");
   context.progressBar.classList.add("mobile");
 
-  context.subtitleContainer.classList.remove("medium");
-  context.subtitleContainer.classList.remove("large");
+  context.subtitleContainer.classList.remove("medium", "large");
   context.progressBarContainer.classList.remove("medium");
 
   // Update chapter marker classes
@@ -458,10 +455,10 @@ function tabletDevice(
   sizeClass: string,
   chapterMarkers: any
 ) {
-  if (context.ccButton.style.display !== "none") {
-    context.playbackRateButton.classList.add("showPlaybackrateButton");
-  } else {
+  if (context.ccButton.style.display === "none") {
     context.playbackRateButton.classList.remove("showPlaybackrateButton");
+  } else {
+    context.playbackRateButton.classList.add("showPlaybackrateButton");
   }
 
   context.progressBar.id = "progressBarResponsiveMd";
@@ -497,7 +494,7 @@ function tabletDevice(
 
   //  Remove Mobile Controls
   if (context.controlsContainer.hasChildNodes(context.mobileControls)) {
-    context.controlsContainer.removeChild(context.mobileControls);
+    context.mobileControls.remove();
   }
 
   // for subtitle styling of medium devices
@@ -965,7 +962,7 @@ function handleForwardRewindVisibility(context: any, videoWidth: number) {
     wrapper.style.opacity = "0";
     const parent = wrapper.parentElement;
     if (parent && parent !== context.mobileControlButtonsBlock) {
-      parent.removeChild(wrapper);
+      wrapper.remove();
     }
   }
 }
@@ -1082,8 +1079,10 @@ function resizeVideoWidth(context: any) {
       "device-large"
     );
     // add current classes
-    slot.classList.add(`playlistSlot-${config.sizeClass}`);
-    slot.classList.add(`device-${config.deviceType}`);
+    slot.classList.add(
+      `playlistSlot-${config.sizeClass}`,
+      `device-${config.deviceType}`
+    );
   }
 
   // Handle sidebar-specific layouts

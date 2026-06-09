@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.20]
+
+### Code sanitization & maintainability
+
+Internal hardening and cleanup pass. No public API, attribute, or runtime behavior changes — existing integrations upgrade transparently.
+
+- **Safer numeric parsing** – standardized on the `Number` namespace (`Number.parseFloat`, `Number.parseInt`, `Number.isNaN`, `Number.isFinite`, `Number.NaN`) across the player, avoiding the loosely-coerced global variants for more predictable parsing of attributes, volumes, playback rates, and chapter/overlay timings.
+- **Defensive property access** – replaced manual existence checks with optional chaining and removed redundant guards in the HLS error handling, cast URL resolution, audio/subtitle track resolution, and quality-level code paths.
+- **DOM hygiene** – switched node teardown to `childNode.remove()`, batched repeated `classList` add/remove calls, and moved to `dataset` for `data-*` attributes during responsive layout and slot setup.
+- **Reduced complexity** – decomposed several large functions (playlist navigation, Chromecast session handling, HLS audio-track formatting, video-listener setup, thumbnail normalization) into focused helpers, improving readability without altering behavior.
+- **De-duplication & dead-code removal** – consolidated repeated playlist-item overlay and audio-default-resolution logic into shared helpers, dropped unused imports/variables and an unreferenced module, and removed unnecessary type assertions.
+- **Hardened regex usage** – trailing-slash normalization for spritesheet/poster hosts no longer relies on a backtracking-prone pattern.
+
 ## [1.0.19]
 
 ### Domain migration: `fastpix.io` → `fastpix.com`
