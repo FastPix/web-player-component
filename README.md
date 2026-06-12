@@ -185,7 +185,7 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
   FastPixPlayer supports DRM-encrypted playback using Widevine and FairPlay.  
   To enable DRM, just follow the guide below and include both `token` (playback token) and `drm-token` (DRM license JWT) as attributes on the `<fastpix-player>` element.  
 
-  [Secure Playback with DRM – FastPix Documentation](https://docs.fastpix.io/docs/secure-playback-with-drm#/)
+  [Secure Playback with DRM – FastPix Documentation](https://fastpix.com/docs/video-security/set-up-drm-encryption)
 
 - ## Fading controls:
 
@@ -258,7 +258,7 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
 
     To enable DRM playback, simply follow the setup instructions in our official documentation:
 
-   [Secure Playback with DRM – FastPix Documentation](https://docs.fastpix.io/docs/secure-playback-with-drm#/)
+   [Secure Playback with DRM – FastPix Documentation](https://fastpix.com/docs/video-security/set-up-drm-encryption)
 
 - ### How to Use
 
@@ -325,13 +325,13 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
 
 To get started with the FastPix Player SDK we need some prerequisites, follow these steps:
 
-1. **Log in to the FastPix Dashboard**: Navigate to the [FastPix-Dashboard](https://dashboard.fastpix.io) and log in with your credentials.
-2. **Create Media**: Start by creating a media using a pull or push method. You can also use our APIs instead for [Push media](https://docs.fastpix.io/docs/upload-videos-directly) or [Pull media](https://docs.fastpix.io/docs/upload-videos-from-url).
+1. **Log in to the FastPix Dashboard**: Navigate to the [FastPix-Dashboard](https://dashboard.fastpix.com/) and log in with your credentials.
+2. **Create Media**: Start by creating a media using a pull or push method. You can also use our APIs instead for [Push media](https://fastpix.com/docs/upload-videos/upload-videos-from-device) or [Pull media](https://fastpix.com/docs/upload-videos/upload-videos-from-a-url).
 3. **Retrieve Media Details**: After creation, access the media details by navigating to the "View Media" page.
 4. **Get Playback ID**: From the media details, obtain the playback ID.
 5. **Play Video**: Use the playback ID in the FastPix-player to play the video seamlessly.
 
-[Explore our detailed guide](https://docs.fastpix.io/docs/get-started-in-5-minutes) to upload videos and getting a playback ID using FastPix APIs
+[Explore our detailed guide](https://fastpix.com/docs/get-started/quickstart) to upload videos and getting a playback ID using FastPix APIs
 
 # Installation:
 
@@ -351,9 +351,6 @@ npm install @fastpix/fp-player
 
 - The <fastpix-player> is a versatile HTML5 video player designed to seamlessly play FastPix videos, offering extensive customization options for developers to tailor the playback experience to their needs.
 
-# Feature wise examples: 
-
-[Click here](https://docs.fastpix.io/docs/overview-and-features) for a detailed overview.
 
 ## Playing public media:
 
@@ -519,11 +516,11 @@ To honor users' privacy preferences regarding the 'Do Not Track' setting, set th
 - **Custom Information**: Custom metadata fields allow for flexibility in tracking additional properties.
 - **Browser and OS Information**: Attributes like `browser_name` and `os_name` offer insights into the viewer's device environment.
 
-For more detailed information, please refer to the [FastPix User Passable Metadata Documentation](https://docs.fastpix.io/docs/user-passable-metadata).
+For more detailed information, please refer to the [FastPix User Passable Metadata Documentation](https://fastpix.com/docs/working-with-video-data/pass-custom-metadata-to-metrics).
 
 ## Customize Video Playback Experience
 
-[Explore detailed guides for all features.](https://docs.fastpix.io/docs/autoplay-loop-muted-playback)
+[Explore detailed guides for all features.](https://fastpix.com/docs/web-player/autoplay-loop-and-mute)
 
 ## Enabling Cache Busting (Beta)
 
@@ -537,8 +534,6 @@ To utilize the experimental cache-busting feature, include the `enable-cache-bus
 ></fastpix-player>
 ```
 **Note**: This feature is currently in beta and may be deprecated in future releases.
-
-For comprehensive documentation and advanced usage, visit the FastPix Player Documentation[https://docs.fastpix.io/docs/overview-and-features].
 
 Enhance your web applications with FastPix Player's seamless streaming and extensive customization options.
 
@@ -827,7 +822,7 @@ The `thumbnail-time` attribute in <fastpix-player> allows you to specify a parti
 
 ### spritesheet-src:
 
-The `spritesheet-src` attribute overrides the host that serves the seekbar hover-preview spritesheet and the poster `thumbnail.jpg`. Defaults to `images.fastpix.io`. Accepts a bare host (e.g. `images.fastpix.co`) or a fully-qualified URL (`https://images.example.com`). Trailing slashes are ignored; if no scheme is provided, `https://` is prepended.
+The `spritesheet-src` attribute overrides the host that serves the seekbar hover-preview spritesheet and the poster `thumbnail.jpg`. Defaults to `images.fastpix.com`. Accepts a bare host (e.g. `images.fastpix.co`) or a fully-qualified URL (`https://images.example.com`). Trailing slashes are ignored; if no scheme is provided, `https://` is prepended.
 
 ```html
 <fastpix-player playback-id="playback-id" spritesheet-src="images.fastpix.co"></fastpix-player>
@@ -875,7 +870,7 @@ The available keys are - `KeyK`, `KeyC`, `KeyF`, `KeyM`, `ArrowLeft`, `ArrowRigh
 
 The `chapters` feature lets you divide your video into sections, making navigation easier for users. Each chapter has a startTime, optional endTime, and a title. This is useful for allowing users to jump to specific parts of a video quickly.
 
-For instructions on generating chapters with the API, please see our [FastPix-Dashboard](https://docs.fastpix.io/docs/generate-video-chapters).
+For instructions on generating chapters with the API, please see our [FastPix-Dashboard](https://fastpix.com/docs/video-intelligence/generate-video-chapters).
 
 Below is a simple example of how to add chapters to the <fastpix-player> and listen for events like `timeupdate` and `chapterchange`:
 
@@ -971,7 +966,7 @@ This simplifies adding chapters to the player, especially when dealing with larg
 
 The `fastpix-player` provides extensive options to customize the player's appearance and behavior through CSS variables. These options allow you to tailor the look and feel of the player to match your application's branding and user experience preferences. Customize elements such as buttons, controls, and visual themes for complete flexibility in your video player integration.
 
-[Explore detailed guides for all features.](https://docs.fastpix.io/docs/color-attributes)
+[Explore detailed guides for all features.](https://fastpix.com/docs/web-player/set-the-branding-color)
 
 ## Color customizations:
 
