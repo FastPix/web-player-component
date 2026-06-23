@@ -121,6 +121,6 @@ Before submitting, please ensure:
 **We'll do our best to help you get unstuck!**
 
 **Helpful Resources:**
-- [FastPix Documentation](https://docs.fastpix.io/docs/installation-process)
+- [FastPix Documentation](https://fastpix.com/docs/web-player/install-the-fastpix-web-player)
 - [Web Player README](https://github.com/FastPix/web-player-component#readme)
 - [GitHub Discussions](https://github.com/FastPix/web-player-component/issues)
