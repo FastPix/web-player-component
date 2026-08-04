@@ -58,8 +58,10 @@ export function loadHlsFromCdn(): Promise<void> {
   return loadPromise;
 }
 
-export function getHlsConstructor(): new (config?: unknown) => unknown {
-  const w = window as unknown as { Hls?: new (config?: unknown) => unknown };
+import type Hls from "hls.js";
+
+export function getHlsConstructor(): typeof Hls {
+  const w = window as unknown as { Hls?: typeof Hls };
   const H = w.Hls;
   if (!H) {
     throw new Error("Hls is not available; call loadHlsFromCdn() first");

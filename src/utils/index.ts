@@ -139,7 +139,7 @@ function handleFieldError(context: Context, errorFields: any[]): void {
   }
 }
 
-function appendAttributesToStream(context: any, url: string | string[]) {
+function appendAttributesToStream(context: any, url: string) {
   let params = [];
 
   if (context.hasAttribute("min-resolution")) {
@@ -175,7 +175,7 @@ function appendAttributesToStream(context: any, url: string | string[]) {
 // Centralized error handler
 const handleStreamError = (
   context: Context,
-  status: number,
+  status: number | null | undefined,
   errorMessage?: string | string[],
   errorFields?: any
 ): void => {
@@ -205,7 +205,7 @@ const handleStreamError = (
   });
 
   (
-    errorHandlers[status] ||
+    (status != null ? errorHandlers[status] : undefined) ||
     (() =>
       showError(
         context,
@@ -357,7 +357,12 @@ function isChromeBrowser(): boolean {
   const isEdge = /Edg/.exec(userAgent);
   const isOpera = /OPR|Opera/.exec(userAgent);
 
-  return !!window.chrome && !!isChrome && !isEdge && !isOpera;
+  return (
+    !!(window as unknown as { chrome?: unknown }).chrome &&
+    !!isChrome &&
+    !isEdge &&
+    !isOpera
+  );
 }
 
 function isIOS(context: any): boolean {

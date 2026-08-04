@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.21]
+
+### TypeScript declarations & SSR support
+
+- **Bundled type declarations** – the package now ships `dist/player.d.ts`, giving consumers full autocomplete and type-checking for `FastPixPlayer` (now exported) and its public methods.
+- **JSX support for `<fastpix-player>`** – the element is a recognized intrinsic element in `.tsx` on both React 18 and 19, with all player attributes enumerated and typed. Adding a new attribute requires a matching entry in `src/types/global.ts`.
+- **SSR-safe import** – importing the SDK during server rendering (e.g. Next.js) no longer crashes. Data monitoring is now loaded lazily in the browser, only when tracking is enabled, which also keeps it out of the initial download.
+- **DRM robustness fix** – robustness was configured under a key hls.js never reads, making it a silent no-op; it is now applied via `drmSystemOptions` as intended.
+- **Stream error handling** – a missing HTTP status no longer bypasses the error handler; it falls back to the generic playback message.
+- **Build** – migrated from esbuild CLI scripts to tsup with an explicit `tsc --noEmit` gate. Output filenames (`player.js`, `player.esm.js`) are unchanged.
+- `hls.js` and `react` are declared as optional peer dependencies, reflecting that both appear only in type positions and neither is a runtime dependency.
+
 ## [1.0.20]
 
 ### Code sanitization & maintainability

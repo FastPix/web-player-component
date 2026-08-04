@@ -1,4 +1,5 @@
-import type { HlsConfig, Hls as HlsInstanceType } from "hls.js";
+import type { HlsConfig } from "hls.js";
+import type HlsInstanceType from "hls.js";
 
 import { getHlsConstructor, loadHlsFromCdn } from "./loadHlsFromCdn.js";
 import { hideError, showError } from "./ErrorElement.js";
@@ -54,11 +55,15 @@ const configHls: Partial<HlsConfig> = {
 
   drmSystems: {
     "com.widevine.alpha": {
-      robustness: "SW_SECURE_CRYPTO",
+      licenseUrl: "",
     },
     "com.apple.fps": {
-      robustness: "SW_SECURE_CRYPTO",
+      licenseUrl: "",
     },
+  },
+  drmSystemOptions: {
+    videoRobustness: "SW_SECURE_CRYPTO",
+    audioRobustness: "SW_SECURE_CRYPTO",
   },
 };
 
@@ -1023,8 +1028,7 @@ function logAudioSwitchTotalDurationSummary(
   if (typeof t0 !== "number") return;
   const totalSec = Math.round((performance.now() - t0) / 10) / 100;
   const meta = context.__fpAudioSwitchMeta as
-    | { from?: number; to?: number }
-    | undefined;
+    { from?: number; to?: number } | undefined;
   fpAudioDebugLog(
     context,
     "audio-switch TOTAL duration (request → this point)",
@@ -1290,8 +1294,7 @@ function nudgePlaybackAfterAudioTrackSwitch(
   };
 
   const prevCleanup = context.__fpAudioTrackSwitchNudgeCleanup as
-    | (() => void)
-    | undefined;
+    (() => void) | undefined;
   if (typeof prevCleanup === "function") {
     try {
       prevCleanup();

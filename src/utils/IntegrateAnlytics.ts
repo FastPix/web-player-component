@@ -1,4 +1,3 @@
-import fastpixMetrix from "@fastpix/video-data-core";
 import { Context } from "./index";
 
 declare const __FP_PLAYER_VERSION__: string | undefined;
@@ -13,10 +12,6 @@ type HlsClass = new () => HlsInstance;
 
 // Type for Video Element
 type VideoElement = HTMLVideoElement;
-
-interface AttributeMapping {
-  [attribute: string]: string;
-}
 
 interface ExtractedData {
   workspace_id?: string;
@@ -39,6 +34,7 @@ interface ExtractedData {
   video_variant_name?: string;
   video_cdn?: string;
   cdn?: string;
+  beacon_domain?: string;
   video_variant_id?: string;
   video_series?: string;
   custom_1?: string;
@@ -59,26 +55,27 @@ interface ExtractedData {
   player_poster?: string;
   os_version?: string;
   page_url?: string;
-  player_autoplay_on?: string;
   player_height?: string;
   player_instance_id?: string;
   player_language_code?: string;
   video_poster_url?: string;
   player_init_time?: string;
   player_preload_on?: string;
-  player_remote_played?: string;
   player_software_name?: string;
   player_software_version?: string;
   video_source_height?: string;
   video_source_width?: string;
   player_width?: string;
-  player_is_fullscreen?: string;
   viewer_connection_type?: string;
   device_manufacturer?: string;
   device_category?: string;
   device_name?: string;
   device_model?: string;
   device_type?: string;
+}
+
+interface AttributeMapping {
+  [attribute: string]: keyof ExtractedData;
 }
 
 // Type for HLS Instance
@@ -88,19 +85,11 @@ interface HlsInstance {
   attachMedia(media: HTMLMediaElement): void;
 }
 
-// Type for Tracker Configuration
-interface TrackerConfig {
-  hlsjs: HlsInstance | null;
-  Hls: HlsClass | null;
-  disableCookies: boolean;
-  beaconCollectionDomain?: string;
-  data: Record<string, string | undefined>;
-  configDomain: string;
-}
-
-// Analytics Interface
-interface DataAnalytix {
-  tracker(video: HTMLVideoElement, config: TrackerConfig): void;
+// Loaded lazily so analytics stays out of the SSR path and is only downloaded
+// in the browser when tracking is enabled.
+async function loadFastpixMetrix() {
+  const mod = await import("@fastpix/video-data-core");
+  return mod.default;
 }
 
 const extractAttributes = (context: Context): ExtractedData => {
@@ -187,14 +176,20 @@ export function initializeAnalytics(
   const configDomain = context.getAttribute("config-domain") || "anlytix.io";
 
   if (shouldTrack) {
-    fastpixMetrix.tracker(video, {
-      debug,
-      hlsjs: hls,
-      Hls,
-      disableCookies,
-      data,
-      respectDoNotTrack,
-      configDomain,
-    });
+    loadFastpixMetrix()
+      .then((fastpixMetrix) => {
+        fastpixMetrix.tracker(video, {
+          debug,
+          hlsjs: hls,
+          Hls,
+          disableCookies,
+          data,
+          respectDoNotTrack,
+          configDomain,
+        });
+      })
+      .catch((error) => {
+        console.warn("Failed to load FastPix data monitoring:", error);
+      });
   }
 }

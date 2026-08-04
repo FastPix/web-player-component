@@ -30,7 +30,8 @@ import {
   hideDefaultSubtitlesStyles,
   disableAllSubtitles,
 } from "./utils/SubtitleHandler";
-import type { Hls as HlsInstance } from "hls.js";
+import type HlsInstance from "hls.js";
+import "./types/global";
 import {
   configHls,
   directResumePlaybackAfterAudioTrackChange,
@@ -480,7 +481,7 @@ function timeToSeconds(timeStr: string): number {
   return h * 3600 + m * 60 + s;
 }
 
-class FastPixPlayer extends windowObject.HTMLElement {
+export class FastPixPlayer extends windowObject.HTMLElement {
   [x: string]: any;
   _readyState: number;
   hls: HlsInstance | null;
@@ -1809,7 +1810,9 @@ class FastPixPlayer extends windowObject.HTMLElement {
     this.bottomRightDiv.appendChild(this.pipButton);
     this.bottomRightDiv.appendChild(this.fullScreenButton);
     this.bottomRightDiv.appendChild(this.subtitleMenu);
-    this.bottomRightDiv.appendChild(this.playbackRateDiv);
+    if (this.playbackRateDiv) {
+      this.bottomRightDiv.appendChild(this.playbackRateDiv);
+    }
 
     playlistButtonClickHandler(this);
 
