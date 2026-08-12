@@ -1,8 +1,108 @@
-# Introduction:
+# Web video player for HLS and adaptive streaming - the FastPix Player web component
 
-This SDK simplifies HLS video playback by offering a wide range of customization options for an enhanced viewing experience. It streamlines streaming setup by utilizing playback IDs that have reached the "ready" status to generate stream URLs. These playback IDs enable seamless integration and video playback within the FastPix-player, making the entire streaming process efficient and user-friendly.
+[![npm version](https://img.shields.io/npm/v/@fastpix/fp-player)](https://www.npmjs.com/package/@fastpix/fp-player)
+[![npm downloads](https://img.shields.io/npm/dm/@fastpix/fp-player)](https://www.npmjs.com/package/@fastpix/fp-player)
+[![license](https://img.shields.io/npm/l/@fastpix/fp-player)](https://github.com/FastPix/web-player-component/blob/main/LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-# Key Features:
+Add a fully featured HLS video player to any web app with a single `<fastpix-player>` HTML tag. The FastPix Player is a customizable HTML5 and web-component video player that handles adaptive-bitrate (ABR) streaming, live and on-demand playback, DRM (Widevine and FairPlay), subtitles and multiple audio tracks, chapters, playlists, shoppable video, and built-in playback analytics - all configurable through HTML attributes and CSS variables, with no framework required.
+
+**Works with:** HLS (`.m3u8`) · HTML5 and Web Components · React 18+ · any bundler or a plain `<script>` / CDN · Widevine and FairPlay DRM · TypeScript
+
+📖 **Docs:** https://fastpix.com/docs/web-player/install-the-fastpix-web-player &nbsp;·&nbsp; 🚀 **Free account:** https://dashboard.fastpix.com
+
+## Why FastPix Player?
+
+- **One tag, a full player.** Drop in `<fastpix-player playback-id="...">` and get a production-ready UI with scrubbing, thumbnail previews, captions, quality selection, Picture-in-Picture, fullscreen, and keyboard shortcuts.
+- **Adaptive HLS out of the box.** Automatic ABR quality switching for live and on-demand streams, with manual quality locking when you need it.
+- **Customizable to your brand.** Control colors, controls, aspect ratio, and layout with CSS variables and named slots, or build fully custom controls on top of the player's programmatic API.
+- **Secure and analytics-ready.** Signed-playback tokens, Widevine and FairPlay DRM, and built-in video-data monitoring using your metadata workspace key.
+
+---
+
+## Prerequisites:
+
+## Getting started with FastPix:
+
+To get started with the FastPix Player SDK we need some prerequisites, follow these steps:
+
+1. **Log in to the FastPix Dashboard**: Navigate to the [FastPix-Dashboard](https://dashboard.fastpix.com) and log in with your credentials.
+2. **Create Media**: Start by creating a media using a pull or push method. You can also use our APIs instead for [Push media](https://fastpix.com/docs/upload-videos/upload-videos-from-device) or [Pull media](https://fastpix.com/docs/upload-videos/upload-videos-from-a-url).
+3. **Retrieve Media Details**: After creation, access the media details by navigating to the "View Media" page.
+4. **Get Playback ID**: From the media details, obtain the playback ID.
+5. **Play Video**: Use the playback ID in the FastPix-player to play the video seamlessly.
+
+[Explore our detailed guide](https://fastpix.com/docs/get-started/quickstart) to upload videos and getting a playback ID using FastPix APIs
+
+## Installation:
+
+To get started with the SDK, first install the FastPix Player SDK for Web, you can use npm or your favourite node package manager 😉:
+
+```shell
+npm install @fastpix/fp-player
+```
+
+## Basic Usage:
+
+## Usage
+
+```html
+<fastpix-player playback-id="playback-id" stream-type="on-demand"/>
+```
+
+- The <fastpix-player> is a versatile HTML5 video player designed to seamlessly play FastPix videos, offering extensive customization options for developers to tailor the playback experience to their needs.
+
+
+## Playing public media:
+
+The `playback-id` allows for easy video playback by linking directly to the media file. Playback is available as soon as the media status is "ready".
+
+### For on-demand videos:
+
+```html
+<fastpix-player playback-id="playback-id" />
+```
+
+Here, the `stream-type` is set to `on-demand` by default.
+
+## For live-stream videos:
+
+```html
+<fastpix-player playback-id="playback-id" stream-type="live-stream" />
+```
+
+Here, the `stream-type` is set to `live-stream` to play live streams.
+
+## Securing your playback:
+
+Secure your video playback with a signed playback using a `playback-id` and `token`.
+
+- **On-Demand Videos** : Use the playback-id and token to control access to the video. The token ensures only authorized users can play the video.
+
+```html
+<fastpix-player 
+  playback-id="your-playback-id" 
+  stream-type="on-demand" 
+  token="your-secure-token"
+></fastpix-player>
+```
+- **Live-Stream Videos** : Similarly, for live streams, provide the playback-id and token to secure access.
+
+```html
+<fastpix-player 
+  playback-id="your-live-playback-id"
+  stream-type="live-stream" 
+  token="your-secure-token">
+</fastpix-player>
+```
+
+The token ensures authorized access, securing both on-demand and live-stream content.
+
+## Key Features:
+
+<details>
+<summary><strong>Full feature catalog - all attributes, methods, and events (click to expand)</strong></summary>
+
 
 - ## Playback Control:
 
@@ -278,6 +378,7 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
         token="YOUR-PLAYBACK-TOKEN"
         drm-token="YOUR-DRM-TOKEN">
       </fastpix-player>
+   ```
 
 - ## Title display:
 
@@ -319,85 +420,14 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
 
   For detailed implementation guide, see [Shoppable Video Developer Guide](SHOPPABLE_VIDEO_DEVELOPER_GUIDE.md).
 
-# Prerequisites:
 
-## Getting started with FastPix:
-
-To get started with the FastPix Player SDK we need some prerequisites, follow these steps:
-
-1. **Log in to the FastPix Dashboard**: Navigate to the [FastPix-Dashboard](https://dashboard.fastpix.com) and log in with your credentials.
-2. **Create Media**: Start by creating a media using a pull or push method. You can also use our APIs instead for [Push media](https://fastpix.com/docs/upload-videos/upload-videos-from-device) or [Pull media](https://fastpix.com/docs/upload-videos/upload-videos-from-a-url).
-3. **Retrieve Media Details**: After creation, access the media details by navigating to the "View Media" page.
-4. **Get Playback ID**: From the media details, obtain the playback ID.
-5. **Play Video**: Use the playback ID in the FastPix-player to play the video seamlessly.
-
-[Explore our detailed guide](https://fastpix.com/docs/get-started/quickstart) to upload videos and getting a playback ID using FastPix APIs
-
-# Installation:
-
-To get started with the SDK, first install the FastPix Player SDK for Web, you can use npm or your favourite node package manager 😉:
-
-```shell
-npm install @fastpix/fp-player
-```
-
-# Basic Usage:
-
-## Usage
-
-```html
-<fastpix-player playback-id="playback-id" stream-type="on-demand"/>
-```
-
-- The <fastpix-player> is a versatile HTML5 video player designed to seamlessly play FastPix videos, offering extensive customization options for developers to tailor the playback experience to their needs.
-
-
-## Playing public media:
-
-The `playback-id` allows for easy video playback by linking directly to the media file. Playback is available as soon as the media status is "ready".
-
-### For on-demand videos:
-
-```html
-<fastpix-player playback-id="playback-id" />
-```
-
-Here, the `stream-type` is set to `on-demand` by default.
-
-## For live-stream videos:
-
-```html
-<fastpix-player playback-id="playback-id" stream-type="live-stream" />
-```
-
-Here, the `stream-type` is set to `live-stream` to play live streams.
-
-## Securing your playback:
-
-Secure your video playback with a signed playback using a `playback-id` and `token`.
-
-- **On-Demand Videos** : Use the playback-id and token to control access to the video. The token ensures only authorized users can play the video.
-
-```html
-<fastpix-player 
-  playback-id="your-playback-id" 
-  stream-type="on-demand" 
-  token="your-secure-token"
-></fastpix-player>
-```
-- **Live-Stream Videos** : Similarly, for live streams, provide the playback-id and token to secure access.
-
-```html
-<fastpix-player 
-  playback-id="your-live-playback-id"
-  stream-type="live-stream" 
-  token="your-secure-token">
-</fastpix-player>
-```
-
-The token ensures authorized access, securing both on-demand and live-stream content.
+</details>
 
 ## Data Integration:
+
+<details>
+<summary><strong>Analytics attribute mapping - full metadata reference (click to expand)</strong></summary>
+
 Data integration involves combining data from different sources to provide a unified view.
 
 ### Data Integration Overview
@@ -518,6 +548,9 @@ To honor users' privacy preferences regarding the 'Do Not Track' setting, set th
 
 For more detailed information, please refer to the [FastPix User Passable Metadata Documentation](https://fastpix.com/docs/working-with-video-data/pass-custom-metadata-to-metrics).
 
+
+</details>
+
 ## Customize Video Playback Experience
 
 [Explore detailed guides for all features.](https://fastpix.com/docs/web-player/autoplay-loop-and-mute)
@@ -536,6 +569,10 @@ To utilize the experimental cache-busting feature, include the `enable-cache-bus
 
 
 Enhance your web applications with FastPix Player's seamless streaming and extensive customization options.
+
+
+<details>
+<summary><strong>All player attributes (A to Z) - muted, auto-play, crossorigin, preload, start-time, title, and more (click to expand)</strong></summary>
 
 ### muted:
 
@@ -755,6 +792,9 @@ The `target-live-window` attribute works only when the stream-type is set to liv
 </fastpix-player>
 ```
 
+
+</details>
+
 ## Resolution Settings:
 
   Here are the resolution settings for the min-resolution, max-resolution, resolution, and rendition-order attributes:
@@ -964,6 +1004,10 @@ This simplifies adding chapters to the player, especially when dealing with larg
 
 ## Styling and Customization:
 
+<details>
+<summary><strong>Styling, colors, and CSS-variable reference (click to expand)</strong></summary>
+
+
 The `fastpix-player` provides extensive options to customize the player's appearance and behavior through CSS variables. These options allow you to tailor the look and feel of the player to match your application's branding and user experience preferences. Customize elements such as buttons, controls, and visual themes for complete flexibility in your video player integration.
 
 [Explore detailed guides for all features.](https://fastpix.com/docs/web-player/set-the-branding-color)
@@ -1100,6 +1144,9 @@ fastpix-player {
 
 Each of these features is designed to enhance both flexibility and user experience, providing complete control over video playback, appearance, and user interactions in FastPix-player.
 
+
+</details>
+
 ## Playlist Quick Start
 
 Add a playlist and navigate programmatically or with the default UI.
@@ -1164,6 +1211,10 @@ Hide the default playlist panel and build your own using the slot:
 For full details see `PLAYLIST_DEVELOPER_GUIDE.md`.
 
 ## Build Custom Controls with FastPix (Seekbar, Play/Pause, Mute/Unmute)
+
+<details>
+<summary><strong>Full custom-controls walkthrough - HTML, CSS, and JS (click to expand)</strong></summary>
+
 
 This section demonstrates how to build your own **custom player controls** on top of the FastPix Player while still leveraging the player’s built-in capabilities such as **scrubbing, hover thumbnail previews, keyboard interactions, and Chromecast support**.
 
@@ -1737,3 +1788,57 @@ For a full **Shorts-style feed** in React 19 (multiple vertical shorts, scroll s
 - **[FastPix/fastpix-web-player-react-shorts-demo](https://github.com/FastPix/fastpix-web-player-react-shorts-demo)**
 
 You can reuse the HTML/CSS/script above in your own page or adapt the pattern from the React demo to get your own seekbar design while keeping FastPix thumbnail hover previews and seeking behavior.
+
+---
+
+
+</details>
+
+## Which FastPix SDK should I use?
+
+| If you want to... | Use |
+|---|---|
+| Play FastPix video on the web (this repo) | **web-player-component** - `@fastpix/fp-player` |
+| Build a React shorts / reels feed on this player | [fastpix-web-player-react-shorts-demo](https://github.com/FastPix/fastpix-web-player-react-shorts-demo) |
+| Upload large files to FastPix from the browser | [web-uploads-sdk](https://github.com/FastPix/web-uploads-sdk) - `@fastpix/resumable-uploads` |
+
+Browse every SDK and tool in the [FastPix organization](https://github.com/orgs/FastPix/repositories).
+
+## FAQ
+
+**How do I add an HLS video player to my website?**
+Install `@fastpix/fp-player`, then add a `<fastpix-player playback-id="...">` element. It plays HLS (`.m3u8`) with adaptive bitrate automatically. See [Installation](#installation) and [Basic Usage](#basic-usage).
+
+**How do I use the FastPix Player in React?**
+`<fastpix-player>` is a standard web component, so it works in React 18+ (including React 19) like any HTML element. For a complete Reels/Shorts-style feed, see the [React shorts demo](https://github.com/FastPix/fastpix-web-player-react-shorts-demo). To wire up your own buttons and seekbar, see [Build Custom Controls with FastPix](#build-custom-controls-with-fastpix-seekbar-playpause-muteunmute).
+
+**How do I autoplay a video or build a muted shorts feed?**
+Use the `auto-play` and `muted` attributes together (browsers require muted autoplay), or use `autoplay-shorts` for vertical reel-style feeds. See [autoplay-shorts](#autoplay-shorts).
+
+**How do I secure playback with a token?**
+Pass a signed-playback JWT in the `token` attribute for private or signed streams. See [Securing your playback](#securing-your-playback).
+
+**Does the player support DRM (Widevine and FairPlay)?**
+Yes. Include both a `token` (playback JWT) and a `drm-token` (DRM license JWT) as attributes on the `<fastpix-player>` element. See the DRM Support section for the setup guide.
+
+**How do I show subtitles or switch audio tracks?**
+Subtitles and audio tracks are auto-detected from the HLS manifest. Read them with `getSubtitleTracks()` / `getAudioTracks()` and switch with `setSubtitleTrack()` / `setAudioTrack()`. See the Audio & Subtitle Tracks section.
+
+**How do I control video quality or resolution?**
+Adaptive bitrate is automatic; you can also cap or lock quality with the `min-resolution`, `max-resolution`, and `resolution` attributes. See [Resolution Settings](#resolution-settings).
+
+**How do I build my own custom player controls?**
+The player exposes programmatic methods (`play`, `pause`, `mute`, `unmute`, `seekForward`, `seekBackward`) so you can build a custom seekbar and buttons over the video while keeping thumbnail previews and seeking. See [Build Custom Controls with FastPix](#build-custom-controls-with-fastpix-seekbar-playpause-muteunmute).
+
+**How do I track video analytics and QoE?**
+Add the `metadata-workspace-key` attribute (plus optional `metadata-*` fields) to stream playback metrics into FastPix Video Data. See [Data Integration](#data-integration).
+
+**How do I add chapters or a playlist?**
+Use `addChapters()` for chaptered navigation and `addPlaylist()` for multi-video playback. See [Adding Chapters to Player and Event Listening](#adding-chapters-to-player-and-event-listening) and [Playlist Quick Start](#playlist-quick-start).
+
+**How do I match the player to my brand colors?**
+Set the `accent-color`, `primary-color`, and `secondary-color` attributes, or customize any control with CSS variables. See [Styling and Customization](#styling-and-customization).
+
+## Documentation
+
+Full guides and the web-player reference live at [fastpix.com/docs](https://fastpix.com/docs/get-started/quickstart). Create a free workspace in the [FastPix Dashboard](https://dashboard.fastpix.com) to get a playback ID and start streaming.
