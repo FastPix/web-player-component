@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Course page — instant lesson start</title>
+
+    <!--
+      Instant lesson start on a course / listing page
+      ==============================================
+
+      The problem
+      -----------
+      On a listing page, the usual approach is to create the player when the
+      user clicks a lesson. Everything then happens after the click: the
+      manifest is fetched, the signed token is checked, a rendition is picked,
+      and the first segments download and decode. That is the 1-3 second
+      loader.
+
+      Why `preload` does not fix it
+      -----------------------------
+      `preload` is forwarded to the underlying <video> element, and the browser
+      only honours it for media it loads itself. FastPix delivers HLS, driven
+      by hls.js, which begins fetching as soon as the source is attached and
+      never reads `video.preload`. It is honoured only on the native-HLS path
+      (iOS Safari).
+
+      More importantly, an attribute cannot act on an element that does not
+      exist yet. If the player is created by the click, there is nothing to
+      preload at the moment preloading would need to happen.
+
+      The fix
+      -------
+      <fastpix-player> starts loading the moment it is added to the DOM. So:
+
+        1. Mount the player when the tile renders, not when it is clicked.
+        2. Hold loading with hls.stopLoad() so mounting costs no bandwidth.
+        3. Release it when the lesson is likely to be opened (on hover), and
+           cap the buffer so a warm lesson pulls ~10s rather than ~60s.
+        4. On click, resume loading and play. The expensive work is done.
+
+      Running this page
+      -----------------
+      Fill in TOKEN and LESSONS below, then open the file in a browser. Use the
+      buttons at the top to compare the three strategies against the same
+      media; the "click -> first frame" figure on each tile is the comparison.
+
+        ?mode=none    every lesson mounted, loading held (the slow baseline)
+        ?mode=hover   loading released on hover (recommended)
+        ?mode=all     every lesson warms on page load
+    -->
+
+    <!-- Pinned to the current published build. Check
+         https://www.npmjs.com/package/@fastpix/fp-player for the latest. -->
+    <script defer src="../dist/player.js"></script>
+
+    <style>
+        body { margin: 0; padding: 24px; background: #0f1115; color: #e6e8ee;
+               font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        h1 { font-size: 18px; margin: 0 0 4px; }
+        p.sub { color: #98a0b3; margin: 0 0 18px; }
+
+        .bar { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; flex-wrap: wrap; }
+        .bar .label { color: #98a0b3; font-size: 12px; }
+        button { padding: 6px 12px; border: 0; border-radius: 6px; cursor: pointer;
+                 background: #262b36; color: #98a0b3; font-weight: 500; }
+        button.active { background: #5D09C7; color: #fff; font-weight: 600; }
+
+        .lessons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 1200px; }
+        .lesson { background: #191c23; border: 1px solid #2a2f3a; border-radius: 10px;
+                  padding: 12px; cursor: pointer; }
+        .lesson h2 { font-size: 14px; margin: 0 0 8px; }
+        .stage { aspect-ratio: 16/9; background: #000; border-radius: 6px; overflow: hidden; }
+        fastpix-player { width: 100%; height: 100%; display: block; }
+
+        /* A warm lesson shows its own poster and play button, so the tile needs
+           nothing of its own. If you do want it hidden until opened, hide it
+           with opacity — never display:none or a zero-size box, because hls.js
+           sizes its quality choice off the element and would pin the warm
+           player to the lowest rendition. And never mount it elsewhere and move
+           it in on click: re-parenting fires disconnectedCallback, which
+           destroys everything it has buffered.
+           .stage.warming > * { opacity: 0; pointer-events: none; } */
+
+        table.metrics { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+        table.metrics td { padding: 2px 0; }
+        table.metrics td.k { color: #98a0b3; }
+        table.metrics td.v { text-align: right; font-family: ui-monospace, Menlo, monospace; }
+        .good { color: #4ade80; }
+    </style>
+</head>
+
+<body>
+    <h1>Course lessons — click one, it starts immediately</h1>
+    <p class="sub">The same media in every mode. The only thing that changes is
+        <em>when loading is allowed to start</em>.</p>
+
+    <div class="bar">
+        <span class="label">strategy:</span>
+        <span id="modeBar"></span>
+        <span class="label" id="warmLabel"></span>
+    </div>
+
+    <div class="lessons" id="lessons"></div>
+
+    <script>
+        /* ----------------------------------------------------------------- *
+         *  1. Your lessons                                                   *
+         *                                                                    *
+         *  In a real app each lesson carries its own short-lived signed       *
+         *  token, minted server-side for the user who is watching.            *
+         * ----------------------------------------------------------------- */
+        const params = new URLSearchParams(location.search);
+
+        const TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJraWQiOiI2YTQ4YmNiZC0yZGZhLTQ0ODYtOTRhZC0zODJmNjczMWNjZjQiLCJhdWQiOiJtZWRpYTozZDI0Y2IxYi04NjA0LTRjZTgtYTgyZi1iMDI5OWI2NjhjNDYiLCJpc3MiOiJmYXN0cGl4LmNvbSIsInN1YiI6IiIsImlhdCI6MTc4ODI4MzEwNCwiZXhwIjoxNzg4MzY5NTA0fQ.G0DLpuO-m5bPj-ujI0_ubQGsO_NiOD2i-z6PxBvQqV7Env2aYuqcldAxSUFcKL6lcUwlom5PGI-0XVzEUjYCFQcKnH2wWybmLAY9EWn42h9-cC-8NouCHp-vF5wBgyCgFXjAG5s2TZ96FK1ODbHLgNJcp0WG2J0vP0sDK_2HE5GMQ3DOLb8_9mtzt6kVOE7TGDVsZ0_XEotzjMWIrmF25E76HjSo8h3R59KuRSHzsqCn98_deegxbG5pIipU6gHiLMdbjDY_XBgdZTRh2zfVBnUDGeOFdMNKgPfKdy9gMvLdoP0q_T4smb8w4jvTVVCE6QaZSyh-u0Zeyn1lDSVc-A";
+
+        const LESSONS = [
+            { title: "1. Introduction",   playbackId: params.get("playbackId") || "3d24cb1b-8604-4ce8-a82f-b0299b668c46", token: TOKEN },
+            { title: "2. Core concepts",  playbackId: params.get("playbackId") || "3d24cb1b-8604-4ce8-a82f-b0299b668c46", token: TOKEN },
+            { title: "3. Worked example", playbackId: params.get("playbackId") || "3d24cb1b-8604-4ce8-a82f-b0299b668c46", token: TOKEN }
+        ];
+
+        // How many seconds a warm lesson buffers before anyone opens it.
+        // Without a cap, each warm player pulls roughly a minute of video.
+        const WARM_SECONDS = 10;
+
+        /* ----------------------------------------------------------------- *
+         *  2. Strategy                                                       *
+         *                                                                    *
+         *  Every lesson mounts a real player either way, so every tile shows  *
+         *  its poster and play button. Only the loading differs:              *
+         *                                                                    *
+         *    none  — mounted, loading held. Clicking pays the full cold       *
+         *            start; this is the behaviour you get today.              *
+         *    hover — loading released when the pointer enters the tile.       *
+         *            Recommended: instant start, and nothing is downloaded    *
+         *            for lessons nobody looks at.                             *
+         *    all   — every lesson warms on page load. Instant, but N lessons  *
+         *            times WARM_SECONDS of data, whether opened or not.       *
+         * ----------------------------------------------------------------- */
+        const MODES = { none: "no preload", hover: "warm on hover", all: "warm all on load" };
+        const MODE = MODES[params.get("mode")] ? params.get("mode") : "hover";
+
+        /* ----------------------------------------------------------------- *
+         *  3. Page chrome                                                    *
+         * ----------------------------------------------------------------- */
+        const modeBar = document.getElementById("modeBar");
+        Object.entries(MODES).forEach(([key, label]) => {
+            const button = document.createElement("button");
+            button.textContent = label;
+            if (key === MODE) button.className = "active";
+            button.onclick = () => { params.set("mode", key); location.search = params.toString(); };
+            modeBar.appendChild(button);
+        });
+        document.getElementById("warmLabel").textContent = `warm cap: ${WARM_SECONDS}s`;
+
+        /* ----------------------------------------------------------------- *
+         *  4. Build the list                                                 *
+         * ----------------------------------------------------------------- */
+        const list = document.getElementById("lessons");
+
+        LESSONS.forEach(lesson => {
+            const card = document.createElement("div");
+            card.className = "lesson";
+            card.innerHTML = `<h2>${lesson.title}</h2>
+                              <div class="stage"></div>
+                              <table class="metrics"></table>`;
+            list.appendChild(card);
+
+            const state = { status: "mounting…", buffered: 0 };
+            const view = card.querySelector(".metrics");
+            const render = () => {
+                const row = (k, v, cls) =>
+                    `<tr><td class="k">${k}</td><td class="v ${cls || ""}">${v}</td></tr>`;
+                view.innerHTML =
+                    row("state", state.status, state.ready ? "good" : "") +
+                    row("buffered", state.buffered.toFixed(1) + "s") +
+                    row("click → first frame",
+                        state.ttff != null ? `${state.ttff} ms` : "—",
+                        state.ttff != null && state.ttff < 300 ? "good" : "");
+            };
+
+            const player = mountLesson(card.querySelector(".stage"), lesson, state, render);
+
+            if (MODE === "all") warmLesson(player, state, render);
+            if (MODE === "hover") {
+                const warm = () => warmLesson(player, state, render);
+                card.addEventListener("mouseenter", warm, { once: true });
+                card.addEventListener("focusin", warm, { once: true });   // keyboard users
+                card.addEventListener("touchstart", warm, { once: true, passive: true });
+            }
+
+            // Capture phase, and on the card rather than the player, on purpose.
+            // The player handles clicks on its own play button and stops them
+            // propagating, so a normal (bubbling) listener here would never run
+            // and the held lesson would sit on a spinner. A capture-phase
+            // listener on an ancestor runs before the player sees the click, so
+            // loading is always released first.
+            card.addEventListener("click", event => openLesson(player, state, render, event), true);
+        });
+
+        /* ----------------------------------------------------------------- *
+         *  5. Mount — player on the page, loading held                       *
+         * ----------------------------------------------------------------- */
+        function mountLesson(stage, lesson, state, render) {
+            const player = document.createElement("fastpix-player");
+
+            // Set every attribute BEFORE appending. The element reads its
+            // configuration when it is connected to the document, so anything
+            // added afterwards may not be picked up.
+            player.setAttribute("playback-id", lesson.playbackId);
+            if (lesson.token) player.setAttribute("token", lesson.token);
+            player.setAttribute("stream-type", "on-demand");
+
+            // On private media the poster needs credentials too. Pass a signed
+            // poster URL explicitly, otherwise the image request is rejected
+            // and the tile shows black until playback starts.
+            player.setAttribute("placeholder",
+                `https://images.fastpix.com/${lesson.playbackId}/thumbnail.jpg?time=25` +
+                (lesson.token ? `&token=${lesson.token}` : ""));
+
+            stage.appendChild(player);        // <- loading would start here
+
+            // ...so hold it immediately. Mounting now costs one manifest request
+            // and no video, and the chosen strategy decides when media loading
+            // really begins.
+            //
+            // The hold must be applied from MANIFEST_PARSED onwards: hls.js is
+            // configured with autoStartLoad and calls startLoad() itself at that
+            // point, so a stopLoad() issued any earlier is simply overridden.
+            whenHls(player, hls => {
+                const hold = () => {
+                    if (player.__warming || player.__opened) return;
+                    hls.stopLoad();
+                    state.status = "mounted — loading held";
+                    render();
+                };
+                hls.on("hlsManifestParsed", hold);
+                hls.on("hlsFragLoaded", hold);        // re-assert if anything resumes it
+
+                hls.on("hlsFragLoaded", () => {
+                    player.__lastFragAt = performance.now();
+                    state.buffered = bufferedSeconds(player);
+                    render();
+                });
+            });
+
+            render();
+            return player;
+        }
+
+        /* ----------------------------------------------------------------- *
+         *  6. Warm — load ahead, then stop at the cap                        *
+         * ----------------------------------------------------------------- */
+        function warmLesson(player, state, render) {
+            if (player.__warming || player.__opened) return;
+            player.__warming = true;
+            state.status = "preloading…";
+            render();
+
+            whenHls(player, hls => {
+                hls.config.maxBufferLength = WARM_SECONDS;
+                hls.config.maxMaxBufferLength = WARM_SECONDS;
+                hls.startLoad();
+            });
+
+            const capTimer = setInterval(() => {
+                // Once the lesson is open it buffers normally, so the cap must
+                // stop applying — otherwise stopLoad() would stall playback.
+                if (player.__opened) { clearInterval(capTimer); return; }
+
+                const hls = player.hls;
+                if (!hls) return;
+                hls.config.maxBufferLength = WARM_SECONDS;
+                hls.config.maxMaxBufferLength = WARM_SECONDS;
+
+                state.buffered = bufferedSeconds(player);
+                render();
+
+                // Done when the cap is reached, or when loading has gone quiet
+                // with enough buffered to play: hls.js stops on a fragment
+                // boundary, so the buffer can plateau just under the cap and
+                // never actually cross it.
+                const idleFor = performance.now() - (player.__lastFragAt ?? performance.now());
+                const settled = (player.video?.readyState ?? 0) >= 3 && idleFor > 1500;
+                if (state.buffered < WARM_SECONDS && !settled) return;
+
+                hls.stopLoad();                       // hold here until it is opened
+                clearInterval(capTimer);
+                state.status = "ready";
+                state.ready = true;
+                render();
+            }, 200);
+        }
+
+        /* ----------------------------------------------------------------- *
+         *  7. Open — resume loading and play                                 *
+         * ----------------------------------------------------------------- */
+        function openLesson(player, state, render, event) {
+            if (player.__opened) return;
+            player.__opened = true;                   // releases the warm cap
+
+            const clickedAt = performance.now();
+
+            // Resume normal buffering. On a warm lesson the manifest, the token
+            // check and the first segments are already done, so this is just the
+            // buffer growing behind playback that is about to start.
+            if (player.hls) {
+                player.hls.config.maxBufferLength = 30;
+                player.hls.config.maxMaxBufferLength = 120;
+                player.hls.startLoad();
+            }
+
+            // If the click landed on the player it will start itself; the
+            // capture-phase listener above has already released loading. Only
+            // a click elsewhere on the tile needs play() calling.
+            if (!event || !player.contains(event.target)) {
+                player.play?.().catch(() => { /* autoplay policy — user can press play */ });
+            }
+
+            player.video?.addEventListener("playing", () => {
+                state.ttff = Math.round(performance.now() - clickedAt);
+                state.status = "playing";
+                state.ready = true;
+                render();
+            }, { once: true });
+
+            state.status = "opening…";
+            render();
+        }
+
+        /* ----------------------------------------------------------------- *
+         *  8. Small helpers                                                  *
+         * ----------------------------------------------------------------- */
+
+        // The hls.js instance is created while the player sets up its stream,
+        // shortly after the element is upgraded, and there is no event for it —
+        // so poll briefly. On the native-HLS path (iOS Safari) there is no
+        // instance at all: the browser manages loading, the hold and the cap do
+        // not apply, and lessons behave as they do today.
+        function whenHls(player, fn, waitedMs = 0) {
+            if (player.hls) { fn(player.hls); return; }
+            if (waitedMs > 10000) return;
+            setTimeout(() => whenHls(player, fn, waitedMs + 50), 50);
+        }
+
+        function bufferedSeconds(player) {
+            const video = player.video;
+            return video && video.buffered.length ? video.buffered.end(0) : 0;
+        }
+    </script>
+</body>
+
+</html>

@@ -1028,7 +1028,8 @@ function logAudioSwitchTotalDurationSummary(
   if (typeof t0 !== "number") return;
   const totalSec = Math.round((performance.now() - t0) / 10) / 100;
   const meta = context.__fpAudioSwitchMeta as
-    { from?: number; to?: number } | undefined;
+    | { from?: number; to?: number }
+    | undefined;
   fpAudioDebugLog(
     context,
     "audio-switch TOTAL duration (request → this point)",
@@ -1294,7 +1295,8 @@ function nudgePlaybackAfterAudioTrackSwitch(
   };
 
   const prevCleanup = context.__fpAudioTrackSwitchNudgeCleanup as
-    (() => void) | undefined;
+    | (() => void)
+    | undefined;
   if (typeof prevCleanup === "function") {
     try {
       prevCleanup();

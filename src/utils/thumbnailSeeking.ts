@@ -11,12 +11,23 @@ function clearThumbnailElements(context: any) {
   }
 }
 
-// Helper to attach mouse/touch event listeners
+// Helper to attach mouse/touch event listeners.
+// Attached exactly once per player: thumbnailSeeking() runs again on every
+// `canplay` (via showInitialControls), and the spritesheet failure path used to
+// attach a second set. Two handlers on one mousemove fight over the pill —
+// one paints the frame, the other renders timestamp-only — which is what made
+// the preview flicker in and out while hovering or clicking the seekbar.
 function attachProgressBarListeners(
   context: any,
-  showThumbnail: (clientX: number) => void,
-  seekbarPin: HTMLElement
+  showThumbnail: (clientX: number) => void
 ) {
+  if (context.thumbnailListenersAttached) return;
+  context.thumbnailListenersAttached = true;
+
+  // Resolved per event: setupSeekbarPin() may create the pin after this runs.
+  const seekbarPin = (): HTMLElement | null =>
+    context.controlsContainer.querySelector(".seekbarPin");
+
   context.progressBar.addEventListener("mousemove", (event: MouseEvent) => {
     showThumbnail(event.clientX);
   });
@@ -27,7 +38,8 @@ function attachProgressBarListeners(
     showThumbnail(event.clientX);
   });
   context.progressBar.addEventListener("mouseleave", () => {
-    seekbarPin.style.display = "none";
+    const pin = seekbarPin();
+    if (pin) pin.style.display = "none";
     context.thumbnail.classList.remove("show");
   });
   context.progressBar.addEventListener(
@@ -187,7 +199,14 @@ async function fetchThumbnailJson(
     // image URL deterministically from the same endpoint we just fetched.
     // Carry the interval onto the image URL so the JPEG matches the JSON's
     // tile schedule (the API serves a different sheet per interval).
-    const imageQuery = interval == null ? "" : `?interval=${interval}`;
+    // The image needs the same credentials as the JSON: on private playback an
+    // untokenized sheet URL 401s, the <img> errors, and the preview silently
+    // degrades to a bare timestamp.
+    const imageParams = new URLSearchParams();
+    if (token) imageParams.set("token", token);
+    if (interval != null) imageParams.set("interval", String(interval));
+    const imageQs = imageParams.toString();
+    const imageQuery = imageQs ? `?${imageQs}` : "";
     thumbnailJson.url = `${spritesheetSrc}/${playbackId}/${variant}.jpg${imageQuery}`;
     context.spritesheetCache[cacheKey] = thumbnailJson;
     return thumbnailJson;
@@ -199,9 +218,19 @@ async function fetchThumbnailJson(
 
 // DOM Setup
 function setupThumbnailElements(context: any): void {
-  clearThumbnailElements(context);
-  context.thumbnailSeekingContainer.appendChild(context.thumbnail);
-  context.controlsContainer.appendChild(context.thumbnailSeekingContainer);
+  // thumbnailSeeking() re-runs on every `canplay`, including the one after a
+  // seek. Rebuilding the pill then tore its children down and re-appended the
+  // container mid-hover; keep it if it is already mounted.
+  const alreadyMounted =
+    context.thumbnailSeekingContainer.parentElement ===
+      context.controlsContainer &&
+    context.thumbnail.parentElement === context.thumbnailSeekingContainer;
+
+  if (!alreadyMounted) {
+    clearThumbnailElements(context);
+    context.thumbnailSeekingContainer.appendChild(context.thumbnail);
+    context.controlsContainer.appendChild(context.thumbnailSeekingContainer);
+  }
 
   setupTimeDisplay(context);
   setupThumbnailArrow(context);
@@ -329,50 +358,42 @@ function updateChapterDisplay(context: any, currentTime: number): void {
   context.thumbnail.appendChild(context.chapterDisplay);
 }
 
-function createThumbnailHandler(
-  context: any,
-  thumbnailJson: ThumbnailJson | null,
-  dimensions: { width: number; height: number; scalingFactor: number },
-  thumbnailUrl: string | null
-) {
+// Reads context.thumbnailPreview on every event rather than closing over the
+// spritesheet, so a sheet that fails or finishes generating later just updates
+// that one object — no second listener, no conflicting handlers.
+function createThumbnailHandler(context: any) {
   return (clientX: number) => {
-    const rect = context.progressBar.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const proportion = x / rect.width;
-    let currentTime = proportion * context.video.duration;
+    const preview = context.thumbnailPreview;
+    if (!preview) return;
 
-    if (isInvalidTime(currentTime, context)) {
+    const duration = context.video.duration;
+    if (!Number.isFinite(duration) || duration <= 0) {
       hideThumbnail(context);
       return;
     }
 
-    // Only override to playback time when we have thumbnail frames (avoids wrong frame).
-    // For noThumbnail (spritesheet fail) always show cursor time so only the hover timestamp appears.
-    if (
-      thumbnailUrl &&
-      (context.video.seeking || context.video.readyState < 3)
-    ) {
-      currentTime = context.video.currentTime;
-    }
+    const rect = context.progressBar.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const proportion = x / rect.width;
+    // Clamp instead of bailing out: at the very end of the bar the proportion
+    // rounds just past 1, and hiding the pill there made the preview vanish
+    // exactly when the pointer reached the end of the seekbar.
+    const currentTime = Math.min(Math.max(proportion * duration, 0), duration);
 
+    // Always preview the hovered time. The frames come from the spritesheet,
+    // not the decoded video, so there is no reason to snap to video.currentTime
+    // while the player is seeking — doing that made the frame jump away from
+    // the cursor for a moment after every click on the seekbar.
     showThumbnail(
       context,
       currentTime,
       x,
-      dimensions,
-      thumbnailJson,
-      thumbnailUrl
+      preview.dimensions,
+      preview.json,
+      preview.url
     );
     updateChapterDisplay(context, currentTime);
   };
-}
-
-function isInvalidTime(currentTime: number, context: any): boolean {
-  return (
-    Number.isNaN(currentTime) ||
-    currentTime < 0 ||
-    currentTime > context.video.duration
-  );
 }
 
 function hideThumbnail(context: any): void {
@@ -483,7 +504,105 @@ function findCurrentTile(thumbnailJson: ThumbnailJson, currentTime: number) {
       return tiles[i];
     }
   }
-  return null;
+  // The loop stops one short, so the final tile never matched and the tail of
+  // the seekbar kept showing whichever frame was drawn last.
+  const lastTile = tiles[tiles.length - 1];
+  return currentTime >= lastTile.start ? lastTile : null;
+}
+
+// The advanced spritesheet is generated on demand: until it is ready the image
+// endpoint answers 202 with a JSON body ("generation is in progress"), which an
+// <img> reports as a load error. Poll a few times so the preview upgrades
+// itself once the sheet lands, instead of degrading permanently on first try.
+const SPRITESHEET_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000];
+
+// Sheets already proven loadable. thumbnailSeeking() re-runs on every `canplay`,
+// and without this the preview would drop back to timestamp-only on each run
+// until the image resolved again — a visible flicker mid-hover.
+const readySpritesheets = new Set<string>();
+
+function isCurrentPreview(context: any, generation: number): boolean {
+  return context.thumbnailPreviewGeneration === generation;
+}
+
+function useTimestampOnlyPreview(context: any): void {
+  context.thumbnail.classList.add("noThumbnail");
+  context.thumbnail.style.width = "";
+  context.thumbnail.style.height = "";
+  context.thumbnail.style.backgroundImage = "";
+  if (context.thumbnailPreview) {
+    context.thumbnailPreview.url = null;
+  }
+  if (context.progressBar) {
+    context.progressBar.setAttribute("title", "");
+  }
+}
+
+function useFramePreview(
+  context: any,
+  image: HTMLImageElement,
+  url: string
+): void {
+  const preview = context.thumbnailPreview;
+  if (!preview) return;
+  readySpritesheets.add(url);
+  context.spritesheetImage = image;
+  context.thumbnail.classList.remove("noThumbnail");
+  preview.url = url;
+  context.thumbnail.style.width = `${preview.dimensions.width}px`;
+  context.thumbnail.style.height = `${preview.dimensions.height}px`;
+}
+
+async function loadSpritesheetImage(
+  context: any,
+  url: string,
+  generation: number,
+  attempt: number = 0
+): Promise<void> {
+  if (!isCurrentPreview(context, generation)) return;
+
+  let status: number;
+  try {
+    const response = await fetch(url);
+    status = response.status;
+  } catch (error) {
+    console.debug("[thumbnailSeeking] Spritesheet request failed:", error);
+    if (isCurrentPreview(context, generation)) useTimestampOnlyPreview(context);
+    return;
+  }
+
+  if (!isCurrentPreview(context, generation)) return;
+
+  // Still rendering server-side: show the timestamp now, retry for the frames.
+  if (status === 202) {
+    useTimestampOnlyPreview(context);
+    const delay = SPRITESHEET_RETRY_DELAYS_MS[attempt];
+    if (delay == null) return;
+    setTimeout(() => {
+      loadSpritesheetImage(context, url, generation, attempt + 1);
+    }, delay);
+    return;
+  }
+
+  if (status < 200 || status >= 300) {
+    console.debug(
+      `[thumbnailSeeking] Spritesheet unavailable (HTTP ${status}); using timestamp-only preview.`
+    );
+    useTimestampOnlyPreview(context);
+    return;
+  }
+
+  // Sheets are served public/max-age, so this decode reuses the fetch above.
+  const image = new Image();
+  image.onload = () => {
+    if (isCurrentPreview(context, generation)) {
+      useFramePreview(context, image, url);
+    }
+  };
+  image.onerror = () => {
+    if (isCurrentPreview(context, generation)) useTimestampOnlyPreview(context);
+  };
+  image.src = url;
 }
 
 // Main function
@@ -524,55 +643,38 @@ async function thumbnailSeeking(
   setupThumbnailElements(context);
   const dimensions = calculateThumbnailDimensions(context, thumbnailJson);
 
-  const spritesheetImage = new Image();
-  if (thumbnailUrl) {
-    spritesheetImage.src = thumbnailUrl;
-    context.spritesheetImage = spritesheetImage;
-    // Size the pill from the JSON immediately so hover renders correctly even
-    // before the image bytes arrive. The browser will paint each tile region
-    // as soon as the image is decoded.
+  // Single source of truth for the hover preview. thumbnailSeeking() runs again
+  // on every `canplay`, so the listeners must read this rather than close over
+  // one particular spritesheet.
+  context.thumbnailPreviewGeneration =
+    (context.thumbnailPreviewGeneration ?? 0) + 1;
+  const generation = context.thumbnailPreviewGeneration;
+  context.thumbnailPreview = {
+    json: thumbnailJson,
+    dimensions,
+    // Frames are enabled only after the sheet has actually loaded once.
+    url:
+      thumbnailUrl && readySpritesheets.has(thumbnailUrl) ? thumbnailUrl : null,
+  };
+
+  // Only promise frames once the sheet is known to load. Sizing the pill up
+  // front looked right on a public asset, but on private playback (401) or
+  // while an advanced sheet is still generating (202) it drew an empty frame
+  // that then collapsed to a timestamp — the preview "appearing and going".
+  if (context.thumbnailPreview.url) {
+    context.thumbnail.classList.remove("noThumbnail");
     context.thumbnail.style.width = `${dimensions.width}px`;
     context.thumbnail.style.height = `${dimensions.height}px`;
+  } else {
+    useTimestampOnlyPreview(context);
   }
-
-  const showThumbnailHandler = createThumbnailHandler(
-    context,
-    thumbnailJson,
-    dimensions,
-    thumbnailUrl
-  );
 
   // Attach hover listeners immediately so the seekbar is interactive without
   // waiting for the (potentially multi-MB) spritesheet image to download.
-  attachProgressBarListeners(
-    context,
-    showThumbnailHandler,
-    context.controlsContainer.querySelector(".seekbarPin")
-  );
+  attachProgressBarListeners(context, createThumbnailHandler(context));
 
   if (thumbnailUrl) {
-    spritesheetImage.onerror = () => {
-      console.debug(
-        "[thumbnailSeeking] Spritesheet image failed; using timestamp-only preview on hover."
-      );
-      context.thumbnail.classList.add("noThumbnail");
-      context.thumbnail.style.width = "";
-      context.thumbnail.style.height = "";
-      if (context.progressBar) {
-        context.progressBar.setAttribute("title", "");
-      }
-      const fallbackHandler = createThumbnailHandler(
-        context,
-        thumbnailJson,
-        dimensions,
-        null
-      );
-      attachProgressBarListeners(
-        context,
-        fallbackHandler,
-        context.controlsContainer.querySelector(".seekbarPin")
-      );
-    };
+    loadSpritesheetImage(context, thumbnailUrl, generation);
   }
 }
 
@@ -624,6 +726,11 @@ function customizeThumbnail(context: any) {
         if (!context.posterAttribute) {
           context.video.poster = thumbnailUrl;
         }
+      };
+      thumbnailImage.onerror = () => {
+        console.warn(
+          `[fastpix-player] poster image failed to load: ${thumbnailUrl}`
+        );
       };
       thumbnailImage.src = thumbnailUrl;
     }

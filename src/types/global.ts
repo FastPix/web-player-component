@@ -53,6 +53,7 @@ interface FastPixPlayerAttributes extends React.HTMLAttributes<HTMLElement> {
   poster?: string;
   placeholder?: string;
   "thumbnail-time"?: NumLike;
+  "thumbnail-token"?: string;
   "spritesheet-src"?: string;
   "advanced-spritesheet-interval"?: NumLike;
 
