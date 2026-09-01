@@ -113,12 +113,12 @@
          * ----------------------------------------------------------------- */
         const params = new URLSearchParams(location.search);
 
-        const TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJraWQiOiI2YTQ4YmNiZC0yZGZhLTQ0ODYtOTRhZC0zODJmNjczMWNjZjQiLCJhdWQiOiJtZWRpYTozZDI0Y2IxYi04NjA0LTRjZTgtYTgyZi1iMDI5OWI2NjhjNDYiLCJpc3MiOiJmYXN0cGl4LmNvbSIsInN1YiI6IiIsImlhdCI6MTc4ODI4MzEwNCwiZXhwIjoxNzg4MzY5NTA0fQ.G0DLpuO-m5bPj-ujI0_ubQGsO_NiOD2i-z6PxBvQqV7Env2aYuqcldAxSUFcKL6lcUwlom5PGI-0XVzEUjYCFQcKnH2wWybmLAY9EWn42h9-cC-8NouCHp-vF5wBgyCgFXjAG5s2TZ96FK1ODbHLgNJcp0WG2J0vP0sDK_2HE5GMQ3DOLb8_9mtzt6kVOE7TGDVsZ0_XEotzjMWIrmF25E76HjSo8h3R59KuRSHzsqCn98_deegxbG5pIipU6gHiLMdbjDY_XBgdZTRh2zfVBnUDGeOFdMNKgPfKdy9gMvLdoP0q_T4smb8w4jvTVVCE6QaZSyh-u0Zeyn1lDSVc-A";
+        const TOKEN = "YOUR_PRIVATE_PLAYBACK_TOKEN";
 
         const LESSONS = [
-            { title: "1. Introduction",   playbackId: params.get("playbackId") || "3d24cb1b-8604-4ce8-a82f-b0299b668c46", token: TOKEN },
-            { title: "2. Core concepts",  playbackId: params.get("playbackId") || "3d24cb1b-8604-4ce8-a82f-b0299b668c46", token: TOKEN },
-            { title: "3. Worked example", playbackId: params.get("playbackId") || "3d24cb1b-8604-4ce8-a82f-b0299b668c46", token: TOKEN }
+            { title: "1. Introduction",   playbackId: "PLAYBACK_ID_1", token: TOKEN },
+            { title: "2. Core concepts",  playbackId: "PLAYBACK_ID_2", token: TOKEN },
+            { title: "3. Worked example", playbackId: "PLAYBACK_ID_3", token: TOKEN }
         ];
 
         // How many seconds a warm lesson buffers before anyone opens it.
