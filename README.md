@@ -20,29 +20,150 @@ Add a fully featured HLS video player to any web app with a single `<fastpix-pla
 
 ---
 
-## Prerequisites:
+FastPix Web Player
 
-## Getting started with FastPix:
+A customizable web video player for playing FastPix on-demand and live video in web applications.
 
-To get started with the FastPix Player SDK we need some prerequisites, follow these steps:
+The FastPix Web Player supports HLS playback, live streaming, adaptive bitrate playback, subtitles and audio tracks, signed playback, DRM, playlists, custom controls, and more.
 
-1. **Log in to the FastPix Dashboard**: Navigate to the [FastPix-Dashboard](https://dashboard.fastpix.com) and log in with your credentials.
-2. **Create Media**: Start by creating a media using a pull or push method. You can also use our APIs instead for [Push media](https://fastpix.com/docs/upload-videos/upload-videos-from-device) or [Pull media](https://fastpix.com/docs/upload-videos/upload-videos-from-a-url).
-3. **Retrieve Media Details**: After creation, access the media details by navigating to the "View Media" page.
-4. **Get Playback ID**: From the media details, obtain the playback ID.
-5. **Play Video**: Use the playback ID in the FastPix-player to play the video seamlessly.
+Try it in 5 minutes
 
-[Explore our detailed guide](https://fastpix.com/docs/get-started/quickstart) to upload videos and getting a playback ID using FastPix APIs
+The fastest way to evaluate the FastPix Web Player is to install it, add a FastPix playback ID, and open a simple HTML page.
 
-## Installation:
+## Getting Started
 
-To get started with the SDK, first install the FastPix Player SDK for Web, you can use npm or your favourite node package manager 😉:
+Get the FastPix Web Player running in a local web application.
 
-```shell
-npm install @fastpix/fp-player
+This guide uses Node.js, npm, and Vite to create a minimal test application. Follow the steps in order to install the player, add a video, and verify the integration in your browser.
+
+### Prerequisites
+
+Make sure you have: 
+* Node.js 18 or later and npm 9 or later
+* A FastPix playback ID for a video that is ready to play. If you already have a playback ID, continue to the next step.
+
+If you don't have one:
+
+a. Sign in to the [FastPix Dashboard].
+b. Create or upload a video.
+   Wait until the media status is Ready.
+c. Open the media details.
+d. Copy the playback ID.
+   Use a public playback ID for your first test. You can configure signed playback and DRM after you have the player working.
+
+Check that Node.js and npm are installed:
+
+node --version
+npm --version
+
+If either command returns command not found, install Node.js before continuing.
+
+
+1. Create a test project
+
+Create a new directory for the application and initialize it as an npm project:
+
+```
+mkdir fastpix-player-test
+cd fastpix-player-test
+npm init -y
+```
+2. Install the FastPix Web Player and Vite
+
+a. Install the FastPix Web Player:
+
+   ```
+   npm install @fastpix/fp-player
+   ```
+
+b. Install Vite as a development dependency:
+
+  ```
+   npm install --save-dev vite
+  ```
+
+  Verify that the FastPix Web Player was installed:
+
+  ```
+  npm list @fastpix/fp-player
+  ```
+3. Create the application files
+
+Create the HTML and JavaScript files:
+
+```
+touch index.html main.js
 ```
 
-## Basic Usage:
+Your project should now look like this:
+
+fastpix-player-test/
+├── index.html
+├── main.js
+├── package.json
+├── package-lock.json
+└── node_modules/
+
+4. Add the FastPix Player
+
+Open index.html and add:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FastPix Player Test</title>
+</head>
+<body>
+
+  <h1>FastPix Player Test</h1>
+
+  <fastpix-player
+    playback-id="YOUR_PLAYBACK_ID"
+    stream-type="on-demand">
+  </fastpix-player>
+
+  <script type="module" src="/main.js"></script>
+
+</body>
+</html>
+
+Replace YOUR_PLAYBACK_ID with a valid FastPix playback ID.
+
+5. Import the player
+
+Open main.js and add:
+
+```
+import "@fastpix/fp-player";
+```
+This imports the FastPix Web Player and registers the <fastpix-player> web component.
+
+Important: When using Vite, import `@fastpix/fp-player` from your JavaScript entry point. Do not reference the package's dist/player.js file directly from index.html.
+
+6. Start the development server:
+   ```
+   npx vite
+   ```
+   Vite displays a local URL: `Local: http://localhost:5173/`
+
+Open the URL in your browser.
+
+7. Test the player
+
+You should now see the FastPix Player with your video.
+
+Verify the following:
+
+The player renders in the browser.
+Your video loads.
+You can play and pause the video.
+You can seek through the video.
+Volume controls work.
+No JavaScript or module-loading errors appear in the browser console.
+
+If the video plays successfully, you have completed the basic FastPix Web Player integration.
 
 ## Usage
 
