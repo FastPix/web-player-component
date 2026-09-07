@@ -18,96 +18,115 @@ Add a fully featured HLS video player to any web app with a single `<fastpix-pla
 - **Customizable to your brand.** Control colors, controls, aspect ratio, and layout with CSS variables and named slots, or build fully custom controls on top of the player's programmatic API.
 - **Secure and analytics-ready.** Signed-playback tokens, Widevine and FairPlay DRM, and built-in video-data monitoring using your metadata workspace key.
 
+## Jump to
+
+Skip straight to a section without scrolling:
+
+| Get started | Playback & security | Customization | Reference |
+|---|---|---|---|
+| [Start here](#start-here) | [Usage](#usage) | [Styling & CSS variables](#styling-and-customization) | [Key features (full catalog)](#key-features) |
+| [Prerequisites](#before-you-begin) | [Public media](#playing-public-media) | [Resolution settings](#resolution-settings) | [Data integration (analytics)](#data-integration) |
+| [Verify your integration](#7-verify-your-integration) | [Live streams](#for-live-stream-videos) | [Image customizations](#image-customizations) | [Custom controls walkthrough](#build-custom-controls-with-fastpix-seekbar-playpause-muteunmute) |
+| [Which SDK?](#which-fastpix-sdk-should-i-use) | [Secure & DRM playback](#securing-your-playback) | [Keyboard shortcuts](#keyboard-navigation-and-accessibility) | [Playlist quick start](#playlist-quick-start) |
+| [FAQ](#faq) | [Chapters](#adding-chapters-to-player-and-event-listening) | [Feature guides](#customize-video-playback-experience) | [Documentation](#documentation) |
+
+## Start here
+
+If you are adding the FastPix Player for the first time, follow these steps in order to get it running locally:
+
+1. [Check the prerequisites](#before-you-begin)
+2. [Create a test project](#1-create-a-test-project)
+3. [Install the player and Vite](#2-install-the-fastpix-web-player-and-vite)
+4. [Create the application files](#3-create-the-application-files)
+5. [Add the FastPix Player](#4-add-the-fastpix-player)
+6. [Import the player](#5-import-the-player)
+7. [Start the development server](#6-start-the-development-server)
+8. [Verify your integration](#7-verify-your-integration)
+
+Do not skip the verification step. If an install or playback-ID problem occurs, fix it before continuing.
+
 ---
 
-FastPix Web Player
+### Before you begin
 
-A customizable web video player for playing FastPix on-demand and live video in web applications.
+This guide uses Node.js, npm, and Vite to build a minimal test app that plays a FastPix video in your browser.
 
-The FastPix Web Player supports HLS playback, live streaming, adaptive bitrate playback, subtitles and audio tracks, signed playback, DRM, playlists, custom controls, and more.
+Make sure you have:
 
-Try it in 5 minutes
+- **Node.js 18 or later** and **npm 9 or later**.
+- **A FastPix playback ID** for a video that is ready to play.
 
-The fastest way to evaluate the FastPix Web Player is to install it, add a FastPix playback ID, and open a simple HTML page.
+If you don't have a playback ID yet:
 
-## Getting Started
+1. Sign in to the [FastPix Dashboard](https://dashboard.fastpix.com).
+2. Create or upload a video, and wait until the media status is **Ready**.
+3. Open the media details and copy the **playback ID**.
 
-Get the FastPix Web Player running in a local web application.
-
-This guide uses Node.js, npm, and Vite to create a minimal test application. Follow the steps in order to install the player, add a video, and verify the integration in your browser.
-
-### Prerequisites
-
-Make sure you have: 
-* Node.js 18 or later and npm 9 or later
-* A FastPix playback ID for a video that is ready to play. If you already have a playback ID, continue to the next step.
-
-If you don't have one:
-
-a. Sign in to the [FastPix Dashboard].
-b. Create or upload a video.
-   Wait until the media status is Ready.
-c. Open the media details.
-d. Copy the playback ID.
-   Use a public playback ID for your first test. You can configure signed playback and DRM after you have the player working.
+Use a **public** playback ID for your first test - you can add signed playback and DRM after the player is working.
 
 Check that Node.js and npm are installed:
 
+```bash
 node --version
 npm --version
+```
 
-If either command returns command not found, install Node.js before continuing.
+If either command returns `command not found`, install Node.js before continuing.
 
-
-1. Create a test project
+## 1. Create a test project
 
 Create a new directory for the application and initialize it as an npm project:
 
-```
+```bash
 mkdir fastpix-player-test
 cd fastpix-player-test
 npm init -y
 ```
-2. Install the FastPix Web Player and Vite
 
-a. Install the FastPix Web Player:
+## 2. Install the FastPix Web Player and Vite
 
-   ```
-   npm install @fastpix/fp-player
-   ```
+Install the FastPix Web Player:
 
-b. Install Vite as a development dependency:
+```bash
+npm install @fastpix/fp-player
+```
 
-  ```
-   npm install --save-dev vite
-  ```
+Install Vite as a development dependency:
 
-  Verify that the FastPix Web Player was installed:
+```bash
+npm install --save-dev vite
+```
 
-  ```
-  npm list @fastpix/fp-player
-  ```
-3. Create the application files
+Verify that the FastPix Web Player was installed:
+
+```bash
+npm list @fastpix/fp-player
+```
+
+## 3. Create the application files
 
 Create the HTML and JavaScript files:
 
-```
+```bash
 touch index.html main.js
 ```
 
 Your project should now look like this:
 
+```text
 fastpix-player-test/
 ├── index.html
 ├── main.js
 ├── package.json
 ├── package-lock.json
 └── node_modules/
+```
 
-4. Add the FastPix Player
+## 4. Add the FastPix Player
 
-Open index.html and add:
+Open `index.html` and add:
 
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -116,7 +135,6 @@ Open index.html and add:
   <title>FastPix Player Test</title>
 </head>
 <body>
-
   <h1>FastPix Player Test</h1>
 
   <fastpix-player
@@ -125,43 +143,42 @@ Open index.html and add:
   </fastpix-player>
 
   <script type="module" src="/main.js"></script>
-
 </body>
 </html>
-
-Replace YOUR_PLAYBACK_ID with a valid FastPix playback ID.
-
-5. Import the player
-
-Open main.js and add:
-
 ```
+
+Replace `YOUR_PLAYBACK_ID` with a valid FastPix playback ID.
+
+## 5. Import the player
+
+Open `main.js` and add:
+
+```js
 import "@fastpix/fp-player";
 ```
-This imports the FastPix Web Player and registers the <fastpix-player> web component.
 
-Important: When using Vite, import `@fastpix/fp-player` from your JavaScript entry point. Do not reference the package's dist/player.js file directly from index.html.
+This imports the FastPix Web Player and registers the `<fastpix-player>` web component.
 
-6. Start the development server:
-   ```
-   npx vite
-   ```
-   Vite displays a local URL: `Local: http://localhost:5173/`
+> **Important:** When using Vite, import `@fastpix/fp-player` from your JavaScript entry point. Do not reference the package's `dist/player.js` file directly from `index.html`.
 
-Open the URL in your browser.
+## 6. Start the development server
 
-7. Test the player
+```bash
+npx vite
+```
 
-You should now see the FastPix Player with your video.
+Vite displays a local URL: `Local: http://localhost:5173/`. Open the URL in your browser.
 
-Verify the following:
+## 7. Verify your integration
 
-The player renders in the browser.
-Your video loads.
-You can play and pause the video.
-You can seek through the video.
-Volume controls work.
-No JavaScript or module-loading errors appear in the browser console.
+You should now see the FastPix Player with your video. Verify that:
+
+- The player renders in the browser.
+- Your video loads.
+- You can play and pause the video.
+- You can seek through the video.
+- Volume controls work.
+- No JavaScript or module-loading errors appear in the browser console.
 
 If the video plays successfully, you have completed the basic FastPix Web Player integration.
 
@@ -172,7 +189,6 @@ If the video plays successfully, you have completed the basic FastPix Web Player
 ```
 
 - The <fastpix-player> is a versatile HTML5 video player designed to seamlessly play FastPix videos, offering extensive customization options for developers to tailor the playback experience to their needs.
-
 
 ## Playing public media:
 
@@ -207,6 +223,7 @@ Secure your video playback with a signed playback using a `playback-id` and `tok
   token="your-secure-token"
 ></fastpix-player>
 ```
+
 - **Live-Stream Videos** : Similarly, for live streams, provide the playback-id and token to secure access.
 
 ```html
@@ -224,54 +241,34 @@ The token ensures authorized access, securing both on-demand and live-stream con
 <details>
 <summary><strong>Full feature catalog - all attributes, methods, and events (click to expand)</strong></summary>
 
-
 - ## Playback Control:
-
   - The `playback-id` allows for easy video playback by linking directly to the media file. Playback is available as soon as the media status is "ready."
   
   - `auto-play`: Automatically starts playback once the video is loaded, providing a seamless user experience.
-
   - `loop`: Allows the video to repeat automatically after it finishes, perfect for continuous viewing scenarios.
  
   - `muted`: Starts the video without sound; useful for autoplay compliance and shorts/reel-style viewing.
-
   - `autoplay-shorts`: Tuned autoplay behavior for vertical shorts; starts playback quickly when the short is in view, often used with `muted` for best browser compatibility.
-
   - **Note** : Some browsers restrict `auto-play` functionality, especially for videos with audio. To comply with these restrictions, `auto-play` often requires explicit user interaction or permission to be enabled. Ensure users are aware and can manually activate `auto-play` if needed.
-
 - ## Security:
-
   - the `token` attribute is required to play private or DRM protected streams
-
   - **Note:** You can skip the token for public streams.
-
 - ## Inbuilt error handling:
-
   - The player includes inbuilt error handling that displays appropriate error messages, helping developers quickly understand and address any issues that arise during playback.
-
 - ## Seek and Load Options:
-
   - **Forward-Seek** and **Backward-Seek** are customizable options that allow users to define specific time intervals for skipping forward or backward, providing a tailored navigation experience.
   - **Thumbnail Seeking** is enabled by default and allows users to preview video frames by hovering or seeking over the timeline, enhancing navigation.
   - **Preloading** options, such as `metadata`, ensure that video data is loaded in advance, reducing buffer times.
-
 - ## Poster customization:
-
   - Display a preview image at a specified time using the `thumbnail-time` attribute, set a custom `poster` image to show before the video begins playing, or use a `placeholder` to display a temporary image or background while the video is loading.
-
 - ## Auto detection of subtitles and audio tracks:
-
   - The player automatically detects subtitles from the manifest file and displays them during playback. This ensures that users can easily access available subtitle tracks without additional configuration.
-
   - Users can switch between available subtitles and audio tracks during playback, offering a personalized viewing experience. This feature allows viewers to choose their preferred language or audio option easily.
-
 - ## Audio & Subtitle Tracks (integration guide)
-
   This section documents **how to read tracks, set defaults, switch tracks, and consume events**.
   
   - For a step-by-step developer guide, see **`AUDIO_SUBTITLE_TRACKS_DEVELOPER_GUIDE.md`**.
   - For the full API reference (methods/properties/events/attributes/types), see **`AUDIO_SUBTITLE_TRACKS_API.md`**.
-
   - **Integration steps (recommended)**:
     - Include the player script (`dist/player.js`) and add a `<fastpix-player>` element with a `playback-id`.
     - Optionally set defaults by **name/label** using:
@@ -281,23 +278,18 @@ The token ensures authorized access, securing both on-demand and live-stream con
       - `fastpixtracksready` (initial track snapshot; may re-emit once subtitle `textTracks` attach)
       - `fastpixaudiochange` / `fastpixsubtitlechange` (only for explicit changes)
     - Build your UI from `getAudioTracks()` / `getSubtitleTracks()` and call `setAudioTrack(...)` / `setSubtitleTrack(...)` to switch.
-
   - **Important behavior**:
     - **Track switching is label-only**: no numeric ids are accepted by `setAudioTrack` / `setSubtitleTrack`.
     - **Duplicate labels are de-duped** (case-insensitive): if multiple tracks share the same label/name, the player keeps one entry (prefers the currently active one).
     - **`fastpixtracksready` timing**: audio tracks are known at HLS `MANIFEST_PARSED`, but subtitle `textTracks` can attach slightly later, so the player may emit `fastpixtracksready` again with populated subtitle tracks.
-
   - **Attributes**:
-
     | Attribute | Type | Meaning |
     |---|---:|---|
     | `default-audio-track` | string | Default **audio** track by label/name (case-insensitive) |
     | `default-subtitle-track` | string | Default **subtitle** track by label/name (case-insensitive) |
     | `disable-hidden-captions` | boolean | Starts with all subtitles/captions Off on load (no `fastpixsubtitlechange` emitted for this initial disable). Users or code can still turn subtitles back on via UI or API. |
     | `hide-native-subtitles` | boolean | Keeps the internal subtitle container visually empty while **still** emitting `fastpixsubtitlecue` and track events. Use this when you render your own subtitle overlay and never want the built‑in text to appear. |
-
   - **Methods**:
-
     | Method | Purpose |
     |---|---|
     | `getAudioTracks()` | Returns de-duped audio track list (each track has `label`, `language`, `isCurrent`) |
@@ -305,16 +297,13 @@ The token ensures authorized access, securing both on-demand and live-stream con
     | `setAudioTrack(languageName)` | Switch audio by **label/name** |
     | `setSubtitleTrack(languageName \| null)` | Switch subtitles by **label/name**, or `null` to turn Off |
     | `disableSubtitles()` | Turns subtitles Off (equivalent to UI “Off”) |
-
   - **Events**:
-
     | Event | When it fires | `event.detail` (key fields) |
     |---|---|---|
     | `fastpixtracksready` | After manifest parse; may re-emit when subtitle `textTracks` attach | `audioTracks`, `subtitleTracks`, `currentAudioTrackLoaded`, `currentSubtitleLoaded` (plus legacy ids) |
     | `fastpixaudiochange` | Only when audio is explicitly changed (menu click or `setAudioTrack`) | `tracks`, `currentId`, `currentTrack` |
     | `fastpixsubtitlechange` | Only when subtitles are explicitly changed (menu click / Off / programmatic) | `tracks`, `currentId`, `currentTrack` |
     | `fastpixsubtitlecue` | Whenever a cue changes for the active subtitle track | `{ text, language, startTime, endTime }` |
-
   - **Demo explained (`test/index.html`)**:
     - **Markup**:
       - `<fastpix-player ... default-audio-track="French" default-subtitle-track="English">` sets initial tracks by **name**.
@@ -328,92 +317,55 @@ The token ensures authorized access, securing both on-demand and live-stream con
       - Subtitles can appear later, so it **polls** `getSubtitleTracks()` briefly and renders subtitle buttons once available.
     - **Logging current track details**:
       - `fastpixaudiochange` / `fastpixsubtitlechange` listeners log the **current track object** (`detail.currentTrack`), regardless of whether the change came from the built-in menu or the programmatic API.
-
   - **Full reference**:
     - See **`AUDIO_SUBTITLE_TRACKS_API.md`** for the complete API, examples, and best practices.
-
 - ## Quality & resolution (custom UI)
-
   Multivariant HLS supports **ABR** (automatic quality) and **manual** quality locking without changing `streamUrl`. Hide the built-in control with `--resolution-selector: none` and use the API below to build your own quality menu.
-
   **Methods:**
-
   | Method | What it does |
   |--------|--------------|
   | `getQualityLevels()` | Returns all available resolutions. Each entry has `id`, `label` (e.g. `"720p"`), `height`, `width`, `bitrate`, `frameRate`. Pass `id` to `setQualityLevel()`. |
   | `setQualityLevel(id)` | Locks playback to one resolution (manual mode). `id` comes from `getQualityLevels()`. |
   | `setQualityAuto()` | Re-enables ABR — player picks quality based on network speed. |
   | `getPlaybackQuality()` | Returns `{ mode, lockedLevel, loadedLevel }`. `mode` is `"auto"` or `"manual"`. |
-
   **Events:**
-
   | Event | When it fires | `event.detail` |
   |-------|---------------|----------------|
   | `fastpixqualitylevelsready` | Manifest parsed; safe to build your menu | `{ levels: [...] }` |
   | `fastpixqualitychange` | ABR switched level, or user picked a level | `{ mode, lockedLevel, loadedLevel, previousLoadedLevel? }` |
   | `fastpixqualityfailed` | Invalid `levelId` or rendition load error | `{ reason, levelId?, raw? }` |
-
   **CSS variable:**
-
   | Variable | Effect |
   |----------|--------|
   | `--resolution-selector: none` | Hides the built-in resolution button so only your custom menu is shown. |
-
   **Ladder attributes** (`min-resolution`, `max-resolution`, `resolution`, `rendition-order`) are documented under **Resolution Settings** in this README.
-
 - ## Custom UI slots (named slot regions)
-
   Add buttons or markup **over the video** using standard **named slots** as children of `<fastpix-player>` (e.g. `slot="top-right"`, `slot="bottom-left"`). Nine regions are available in a 3×3 grid; tune stacking and bottom offset with `--user-slot-z` and `--user-slot-bottom-clearance`.
-
   **Guide:** **`SLOTS_DEVELOPER_GUIDE.md`** · **API:** `getUserSlotsOverlay()` · **Shadow part:** `part="user-slots"` on the internal overlay. **Bundled demo:** **`demo/slots_demo.html`** (multiple controls per region + sibling slot assignments; run `npm run build` first).
-
 - ## Styling and color customization:
-
   - Customize the player’s visual elements using the `accent-color`, `primary-color`, and `secondary-color` attributes:
-
   - `accent-color`: Represents the branding color, ensuring the player aligns with your brand identity.
-
   - `primary-color`: Applies color to the icons, enhancing their visibility and style.
-
   - `secondary-color`: Sets the background color of the icons, providing a complementary look and feel.
-
 These attributes enable the creation of brand-aligned themes for a cohesive user experience.
-
 - ### Backdrop color customization: 
-
   - Adjust the backdrop colors of player controls to match the aesthetic of your application, enhancing visual consistency and user experience.
-
 - ## Advanced stream control:
-
   - The player supports `on-demand` and `live-stream` capabilities by utilizing specified `stream-type`, enabling a versatile playback experience based on content type.
-
   - Define the `stream-type` and `default-stream-type` to set default stream behaviors, adapting to whether the content is live or   on-demand.
-
   - Customize playback with `default-playback-rate` and multiple `playback-rates` options for various speeds.
-
   - Manage video quality with `min-resolution`, `max-resolution`, and `resolution` and `rendition-order` options, allowing either automated or controlled playback quality adjustments.
-
 - ## Aspect ratios:
-
   - In your CSS, add the `aspect-ratio` property to the FastPix Player element, specifying the desired aspect ratio based on the preference.
-
 - ## Hide and show controls:
-
   Flexibly hide or show specific player controls or all controls as needed, allowing for a customized viewing interface.
-
 - ## DRM Support:
-
   FastPixPlayer supports DRM-encrypted playback using Widevine and FairPlay.  
   To enable DRM, just follow the guide below and include both `token` (playback token) and `drm-token` (DRM license JWT) as attributes on the `<fastpix-player>` element.  
-
   [Secure Playback with DRM – FastPix Documentation](https://fastpix.com/docs/video-security/set-up-drm-encryption#/)
-
 - ## Fading controls:
-
  - Player controls fade away after a few seconds of inactivity, minimizing distractions. They can reappear with user interaction, ensuring a smooth and immersive viewing experience.
-
 - ## Keyboard accessibility shortcuts:
-
   - **Play/Pause**: Press **`K`** or **`Spacebar`** to toggle play and pause.
   - **Mute/Unmute**: Press **`M`** to toggle mute.
   - **Seek Forward**: Press the **Right Arrow** to jump forward by a preset seek offset (e.g., 5 or 10 seconds).
@@ -422,31 +374,20 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
   - **Volume Down**: Press the **Down Arrow** to decrease volume.
   - **Fullscreen**: Press **`F`** to enter or exit fullscreen mode.
   - **Captions**: Press **`C`** to toggle captions on and off.
-
 - ## Volume management:
-
   - The **no-volume-pref** attribute disables volume storage in local storage, ensuring user preferences are not retained between sessions.
   - The **muted** attribute allows the video to start without sound, enhancing the initial viewing experience in specific contexts.
-
 - ## Responsiveness:
-
   - This SDK is designed to be responsive, adapting to various screen sizes and devices. This ensures an optimal viewing experience across desktops, tablets, and smartphones.
-
 - ## Cross-origin resource sharing (CORS):
-
   - The `cross-origin` attribute enables proper handling of cross-origin requests, allowing resources to be fetched securely across different origins and enhancing security when accessing media files.
-
 - ## Programmatic playback control:
-
   - The player exposes JavaScript methods for controlling playback and volume from your code:
-
   - **`play()`** – Starts or resumes playback. Returns a Promise that resolves when playback has started, or rejects if the video is not ready.
   - **`pause()`** – Pauses playback.
   - **`mute()`** – Mutes the video (sets the `muted` attribute and updates internal state; syncs with Chromecast when casting).
   - **`unmute()`** – Unmutes the video (removes `muted`, sets volume to 1; syncs with Chromecast when casting).
-
   Example:
-
   ```html
   <fastpix-player id="player" playback-id="your-playback-id"></fastpix-player>
   <button onclick="document.getElementById('player').play()">Play</button>
@@ -454,45 +395,26 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
   <button onclick="document.getElementById('player').mute()">Mute</button>
   <button onclick="document.getElementById('player').unmute()">Unmute</button>
   ```
-
   These methods are useful when building custom controls (e.g. Shorts-style UI, external buttons, or React/Framework integrations).
-
 - ## Event listeners:
-
   - The player allows developers to listen to various video events through script-side support. You can easily track events like play, pause, seek, and error, enabling customized behavior based on user interaction and player state.
-
 - ## Network-Adaptive Pause and Resume:
-
   - The player can pause and resume based on network connectivity, offering a smooth experience even when connection changes occur.
-
 - ## Lazy loading and monitoring:
-
   - The `enable-lazy-loading` option optimizes resource usage by loading video data only when necessary.
-
 - ## Chapters:
-
   - Add chapters to the video, allowing users to easily navigate to specific sections of the content. This feature enhances user engagement and makes it simpler for viewers to find relevant information.
-
 - ## DRM-Protected Playback in FastPixPlayer
-
   - FastPixPlayer supports seamless playback of DRM-encrypted content using Widevine and FairPlay.  
-
     To enable DRM playback, simply follow the setup instructions in our official documentation:
-
    [Secure Playback with DRM – FastPix Documentation](https://fastpix.com/docs/video-security/set-up-drm-encryption#/)
-
 - ### How to Use
-
 - After you’ve generated your **playback token** and **DRM token** (both are JWTs issued by your server), include them as attributes on your `<fastpix-player>` tag:
-
 - **`playback-id`** – your unique playback identifier
 - **`token`** – standard playback authorization token (JWT)
 - **`drm-token`** – DRM license token (JWT used for license decryption)
-
 ---
-
 - ### Example
-
    ```html
       <fastpix-player
         playback-id="YOUR-PLAYBACK-ID"
@@ -500,19 +422,13 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
         drm-token="YOUR-DRM-TOKEN">
       </fastpix-player>
    ```
-
 - ## Title display:
-
   - The `title` attribute allows you to set a title for the video, enhancing context and providing additional information to viewers.
-
 - ## Shoppable Video Support:
-
   - **Interactive Product Integration**: Transform your videos into shopping experiences with clickable products, interactive hotspots, and product catalogs.
-
   - **Two Theme Options**:
     - **`shoppable-video-player`**: Full-featured sidebar with product catalog, hotspots, and post-play overlay
     - **`shoppable-shorts`**: Simplified external link integration for social media and mobile-first content
-
   - **Product Features**:
     - Interactive product sidebar with thumbnails and descriptions
     - Clickable hotspots on video timeline
@@ -520,7 +436,6 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
     - Post-play product carousel
     - Time-based product activation
     - Responsive design across all devices
-
   - **Quick Setup**:
     ```html
     <!-- For full-featured experience -->
@@ -528,7 +443,6 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
       theme="shoppable-video-player"
       playback-id="your-playback-id">
     </fastpix-player>
-
     <!-- For simplified social media integration -->
     <fastpix-player 
       theme="shoppable-shorts"
@@ -536,12 +450,8 @@ These attributes enable the creation of brand-aligned themes for a cohesive user
       playback-id="your-playback-id">
     </fastpix-player>
     ```
-
   - **Event Tracking**: Listen to product interactions, sidebar state changes, and post-play engagement events for analytics integration.
-
   For detailed implementation guide, see [Shoppable Video Developer Guide](SHOPPABLE_VIDEO_DEVELOPER_GUIDE.md).
-
-
 </details>
 
 ## Data Integration:
@@ -558,9 +468,7 @@ In this implementation, various video and user-related attributes are extracted 
 **Important Note:**
 
 - To enable data integration, ensure the `metadata-workspace-key` attribute is present.
-
 - **Disable data monitoring:**
-
   To disable data tracking after providing all required attributes, use the `disable-data-monitoring` attribute.
 
 ```html
@@ -577,7 +485,6 @@ In this implementation, various video and user-related attributes are extracted 
 ```
 
 - **Enabling Debugging for Data Monitoring Setup:** 
-
 To facilitate debugging of the data monitoring setup, use the `enable-debug` attribute.
 
 ```html
@@ -593,9 +500,7 @@ To facilitate debugging of the data monitoring setup, use the `enable-debug` att
 ```
 
 - **Respecting 'Do Not Track' Preferences:** 
-
 To honor users' privacy preferences regarding the 'Do Not Track' setting, set the `respect-do-not-track` attribute to `true`.
-
 
 ```html
 <fastpix-player 
@@ -608,10 +513,8 @@ To honor users' privacy preferences regarding the 'Do Not Track' setting, set th
   >
 </fastpix-player>
 ```
-
  
 - **Disabling Cookies During Data Monitoring:** 
-
   If you prefer to monitor data without utilizing cookies, include the `disable-cookies` attribute.
 
 ```html
@@ -669,7 +572,6 @@ To honor users' privacy preferences regarding the 'Do Not Track' setting, set th
 
 For more detailed information, please refer to the [FastPix User Passable Metadata Documentation](https://fastpix.com/docs/working-with-video-data/pass-custom-metadata-to-metrics).
 
-
 </details>
 
 ## Customize Video Playback Experience
@@ -688,15 +590,12 @@ To utilize the experimental cache-busting feature, include the `enable-cache-bus
 ></fastpix-player>
 ```
 
-
 Enhance your web applications with FastPix Player's seamless streaming and extensive customization options.
-
 
 <details>
 <summary><strong>All player attributes (A to Z) - muted, auto-play, crossorigin, preload, start-time, title, and more (click to expand)</strong></summary>
 
 ### muted:
-
 The `muted` attribute starts the video without sound. It is often used with `auto-play` or `autoplay-shorts` to comply with browser autoplay policies, which typically allow autoplay only when the video is muted.
 
 ```html
@@ -709,7 +608,6 @@ The `muted` attribute starts the video without sound. It is often used with `aut
 ```
 
 ### auto-play:
-
 The `auto-play` attribute enables the video to start playing automatically when the player is initialized. This feature requires user interaction or appropriate permissions depending on browser policies.
 
 ```html
@@ -722,7 +620,6 @@ The `auto-play` attribute enables the video to start playing automatically when 
 ```
 
 ### autoplay-shorts:
-
 The `autoplay-shorts` attribute provides tuned autoplay behavior for vertical shorts or reel-style feeds. Playback starts quickly when the short comes into view, and it is commonly used with `muted` for reliable autoplay across browsers.
 
 ```html
@@ -736,28 +633,21 @@ The `autoplay-shorts` attribute provides tuned autoplay behavior for vertical sh
 ```
 
 ### crossorigin:
-
 The crossorigin attribute in <fastpix-player> specifies the `crossorigin` request policy (`anonymous`, `use-credential`s, or `empty`), where an empty value implies no crossoorigin requests unless explicitly supported by the resource.
 
 ```html
-
 <!-- Example of <fastpix-player> with crossorigin attribute -->
-
 <!-- 1. Anonymous: Allows cross-origin requests without credentials -->
-
 <fastpix-player playback-id="playback-id" crossorigin="anonymous" />
 
 <!-- 2. Use-credentials: Allows cross-origin requests with credentials -->
-
 <fastpix-player playback-id="playback-id" crossorigin="use-credentials" />
 
 <!-- 3. Default (empty or omitted): No cross-origin requests unless explicitly allowed -->
-
 <fastpix-player playback-id="playback-id"></fastpix-player>
 ```
 
 ### default-playback-rate:
-
 The `default-playback-rate` attribute sets the default playback speed of the video.
 
 ```html
@@ -768,8 +658,8 @@ The `default-playback-rate` attribute sets the default playback speed of the vid
 >
 </fastpix-player>
 ```
-### default-show-remaining-time:
 
+### default-show-remaining-time:
 The `default-show-remaining` attribute in <fastpix-player> is used to display the remaining time of the video in the format -00:30 / 00:30. When enabled, it shows the time left (negative value) alongside the total duration of the video, giving users a clear indication of how much time remains during playback.
 
 ```html
@@ -780,7 +670,6 @@ The `default-show-remaining` attribute in <fastpix-player> is used to display th
 ```
 
 ### default-stream-type:
-
 The `default-stream-type` attribute in <fastpix-player> is used to specify the default stream type for playback, such as live or on-demand. This attribute allows the player to load and handle the appropriate stream type based on the video content, ensuring proper playback behavior for either live streaming or on-demand video playback.
 
 ```html
@@ -788,7 +677,6 @@ The `default-stream-type` attribute in <fastpix-player> is used to specify the d
 ```
 
 ### disable-hidden-captions:
-
 The `disable-hidden-captions` attribute in <fastpix-player> is used to prevent any hidden captions from being displayed by default. When this attribute is enabled, captions or subtitles that are hidden within the video will not be shown unless explicitly enabled by the user.
 
 ```html
@@ -796,7 +684,6 @@ The `disable-hidden-captions` attribute in <fastpix-player> is used to prevent a
 ```
 
 ### enable-lazy-loading:
-
 The `enable-lazy-loading` attribute enables the lazy loading feature for the <fastpix-player>, which loads the video content only when it becomes visible in the viewport, improving initial page load performance.
 
 ```html
@@ -808,7 +695,6 @@ The `enable-lazy-loading` attribute enables the lazy loading feature for the <fa
 - **Note**: Ensure sufficient margin (margin-top) is applied to place the player outside the initial viewport for lazy loading to work effectively.
 
 ### loop:
-
 The `loop` attribute allows the video to restart automatically from the beginning once it ends, creating a seamless playback experience.
 
 ```html
@@ -821,7 +707,6 @@ The `loop` attribute allows the video to restart automatically from the beginnin
 ```
 
 ### muted:
-
 The `muted` attribute sets the initial volume of the video to 0, ensuring playback starts without sound. This is particularly useful for `auto-play` functionality, as many browsers require videos to be muted to play automatically.
 
 ```html
@@ -834,7 +719,6 @@ The `muted` attribute sets the initial volume of the video to 0, ensuring playba
 ```
 
 ### no-volume-pref:
-
 The `no-volume-pref` attribute disables saving volume preferences in local storage, ensuring volume resets to default on each session.
 
 ```html
@@ -847,7 +731,6 @@ The `no-volume-pref` attribute disables saving volume preferences in local stora
 ```
 
 ### playback-rates:
-
 The `playback-rates` attribute defines a list of available playback speed options for the user to select.
 
 ```html
@@ -860,13 +743,10 @@ The `playback-rates` attribute defines a list of available playback speed option
 ```
 
 ### preload:
-
 The preload attribute in the <fastpix-player> element specifies how the player should preload the media content. It can take the following values:
 
 - `auto`: The player will preload the entire media file to ensure immediate playback without buffering.
-
 - `metadata`: Only the metadata (e.g., duration, dimensions) of the media file will be preloaded, without fetching the entire content.
-
 - `none`: The player will not preload the media and will only load the content when playback is initiated by the user.
 
 ```html
@@ -874,7 +754,6 @@ The preload attribute in the <fastpix-player> element specifies how the player s
 ```
 
 ### start-time:
-
 The `start-time` attribute allows specifying the initial playback position in seconds when the video starts.
 
 ```html
@@ -887,7 +766,6 @@ The `start-time` attribute allows specifying the initial playback position in se
 ```
 
 ### title:
-
 The `title` attribute in <fastpix-player> displays the provided text at the top left corner of the player, offering a brief description or title of the video content. This can be useful for displaying the video's name or additional context directly on the player interface.
 
 ```html
@@ -900,7 +778,6 @@ The `title` attribute in <fastpix-player> displays the provided text at the top 
 ```
 
 ### targert-live-window:
-
 The `target-live-window` attribute works only when the stream-type is set to live-stream, controlling the duration of the visible segment and displaying only the most recent content.
 
 ```html
@@ -913,7 +790,6 @@ The `target-live-window` attribute works only when the stream-type is set to liv
 </fastpix-player>
 ```
 
-
 </details>
 
 ## Resolution Settings:
@@ -925,6 +801,7 @@ The `target-live-window` attribute works only when the stream-type is set to liv
 ```html
 <fastpix-player playback-id="playback-id" min-resolution="1440p" />
 ```
+
 - `max-resolution`: Sets the maximum resolution for video playback, restricting higher-quality video selections.
 
 ```html
@@ -936,6 +813,7 @@ The `target-live-window` attribute works only when the stream-type is set to liv
 ```html
 <fastpix-player playback-id="playback-id" resolution="1440p" />
 ```
+
 `rendition-order`: Specifies the priority order for video resolutions in adaptive streaming, which can be set to either `asc`(ascending) or `desc` (descending), with the default being `asc`.
 
 ```html
@@ -951,7 +829,6 @@ The `target-live-window` attribute works only when the stream-type is set to liv
 Image customization allows you to adjust the appearance of media elements such as thumbnails, posters, and spritesheets in the player.
 
 ### poster:
-
 The `poster` attribute specifies an image to display as a preview before the video starts playing.
 
 - You can change or override the default `poster` attribute in the <fastpix-player> element whenever needed by setting a new image URL. For example:
@@ -967,14 +844,13 @@ The `poster` attribute specifies an image to display as a preview before the vid
 ```
 
 ### placeholder:
-
 The `placeholder` attribute in <fastpix-player> is used to specify a fallback image that is displayed before the video starts playing, serving as a preview or loading image.
 
 ```html
 <fastpix-player playback-id="playback-id" placeholder="loading-image.jpg"></fastpix-player>
 ```
-### thumbnail-time:
 
+### thumbnail-time:
 The `thumbnail-time` attribute in <fastpix-player> allows you to specify a particular time (in seconds) within the video to capture a frame for the thumbnail. This enables setting a custom thumbnail image from a specific moment in the video, rather than using a default thumbnail.
 
 ```html
@@ -982,7 +858,6 @@ The `thumbnail-time` attribute in <fastpix-player> allows you to specify a parti
 ```
 
 ### spritesheet-src:
-
 The `spritesheet-src` attribute overrides the host that serves the seekbar hover-preview spritesheet and the poster `thumbnail.jpg`. Defaults to `images.fastpix.io`. Accepts a bare host (e.g. `images.fastpix.co`) or a fully-qualified URL (`https://images.example.com`). Trailing slashes are ignored; if no scheme is provided, `https://` is prepended.
 
 ```html
@@ -990,7 +865,6 @@ The `spritesheet-src` attribute overrides the host that serves the seekbar hover
 ```
 
 ### enable-advanced-spritesheet:
-
 Boolean attribute that switches hover previews from the default sheet (`spritesheet.json/.jpg`) to the higher-density advanced sheet (`advanced-spritesheet.json/.jpg`). The advanced sheet has many more tiles per video so scrubbing is more frame-accurate, at the cost of a larger image download.
 
 ```html
@@ -998,7 +872,6 @@ Boolean attribute that switches hover previews from the default sheet (`spritesh
 ```
 
 ### advanced-spritesheet-interval:
-
 Sets the gap (in seconds) between consecutive tiles on the advanced spritesheet. Integer from `1` to `10`; values outside that range — or non-numeric values — are ignored and the API's default of `10` is used. Has no effect unless `enable-advanced-spritesheet` is also present. Smaller intervals give finer-grained previews but produce larger spritesheet images.
 
 ```html
@@ -1010,6 +883,7 @@ Sets the gap (in seconds) between consecutive tiles on the advanced spritesheet.
 ```
 
 ## Keyboard Navigation and Accessibility:
+
 Customize keyboard shortcuts with `hot-keys` for efficient video control and use `disable-keyboard-controls` to disable keyboard interactions for enhanced accessibility or specific use cases.
 
 - `hot-keys`: The `hot-keys` attribute specifies custom keyboard shortcuts (e.g., KeyK, KeyC), but when set, control for these specific keys will be disabled within the <fastpix-player>.
@@ -1017,6 +891,7 @@ Customize keyboard shortcuts with `hot-keys` for efficient video control and use
 ```html
 <fastpix-player playback-id="your-playback-id" hot-keys="KeyK KeyC" ></fastpix-player> 
 ```
+
 The available keys are - `KeyK`, `KeyC`, `KeyF`, `KeyM`, `ArrowLeft`, `ArrowRight`, `ArrowUp`, `ArrowDown`, `Space`;
 
 - `disable-keyboard-controls`: The `disable-keyboard-controls` attribute disables all keyboard interactions for video playback within the <fastpix-player>, preventing any keyboard shortcuts from being used.
@@ -1037,42 +912,42 @@ Below is a simple example of how to add chapters to the <fastpix-player> and lis
 
 ```html
   <script>
-         document.addEventListener('DOMContentLoaded', () => {
-           const fpPlayerEl = document.querySelector('fastpix-player');
-           const generatedChaptersResponse = {
-             "chapters": [
-               {
-                 "chapter": "1",
-                 "startTime": "00:00:00",
-                 "title": "Introduction to Lifestyle",
-                 "summary": "Overview of lifestyle choices and their impact on well-being."
-               }
-             ]
-           }
+         document.addEventListener('DOMContentLoaded', () => {
+           const fpPlayerEl = document.querySelector('fastpix-player');
+           const generatedChaptersResponse = {
+             "chapters": [
+               {
+                 "chapter": "1",
+                 "startTime": "00:00:00",
+                 "title": "Introduction to Lifestyle",
+                 "summary": "Overview of lifestyle choices and their impact on well-being."
+               }
+             ]
+           }
          
-           const Chapters = fpPlayerEl.convertChaptersToPlayerFormat(generatedChaptersResponse);
+           const Chapters = fpPlayerEl.convertChaptersToPlayerFormat(generatedChaptersResponse);
       
-           function addChaptersToPlayer() {
-             if (fpPlayerEl && typeof fpPlayerEl.addChapters === 'function') {
-               fpPlayerEl.addChapters(Chapters);
-             } else {
-               console.error('addChapters method not found on fpPlayerEl');
-             }
-           }
+           function addChaptersToPlayer() {
+             if (fpPlayerEl && typeof fpPlayerEl.addChapters === 'function') {
+               fpPlayerEl.addChapters(Chapters);
+             } else {
+               console.error('addChapters method not found on fpPlayerEl');
+             }
+           }
     
-           if (fpPlayerEl && fpPlayerEl.readyState >= 3) {
-             addChaptersToPlayer();
-           } else if (fpPlayerEl) {
-             fpPlayerEl.addEventListener('loadedmetadata', addChaptersToPlayer, { once: true });
-           } else {
-             console.error('sravanifpPlayerEl not found');
-           }
+           if (fpPlayerEl && fpPlayerEl.readyState >= 3) {
+             addChaptersToPlayer();
+           } else if (fpPlayerEl) {
+             fpPlayerEl.addEventListener('loadedmetadata', addChaptersToPlayer, { once: true });
+           } else {
+             console.error('sravanifpPlayerEl not found');
+           }
    
-           fpPlayerEl?.addEventListener('chapterchange', () => {
-             console.log('Chapter change event detected');
-             console.log('Active Chapter:', fpPlayerEl.activeChapter());
-           });
-         });
+           fpPlayerEl?.addEventListener('chapterchange', () => {
+             console.log('Chapter change event detected');
+             console.log('Active Chapter:', fpPlayerEl.activeChapter());
+           });
+         });
        </script>
 ```
 
@@ -1084,17 +959,14 @@ If your chapters are generated by OpenAI, you can use the `convertOpenAIChapters
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const fpPlayerElement = document.querySelector('fastpix-player');
-
     // Assuming OpenAI returns chapter data
     const openAIchapters = [
       { startTime: 0, value: 'Chapter 1' },
       { startTime: 4, value: 'Chapter 2' },
       { startTime: 5, value: 'Chapter 3' },
     ];
-
     // Convert OpenAI chapters to the right format
     const chapters = convertOpenAIChapters(openAIchapters);
-
     function addChaptersToPlayer() {
       if (fpPlayerElement && typeof fpPlayerElement.addChapters === 'function') {
         fpPlayerElement.addChapters(chapters);
@@ -1102,7 +974,6 @@ If your chapters are generated by OpenAI, you can use the `convertOpenAIChapters
         console.error('addChapters method not found');
       }
     }
-
     if (fpPlayerElement && fpPlayerElement.readyState >= 1) {
       addChaptersToPlayer();
     } else {
@@ -1113,7 +984,6 @@ If your chapters are generated by OpenAI, you can use the `convertOpenAIChapters
 ```
 
 - **Key Steps in the Code :**
-
 - **Chapter Definition**: Chapters are defined in an array, with each chapter having a `startTime`, `endTime`, and `value`.
 - **Event Listeners**: The code listens for `timeupdate` to monitor playback, and `loadedmetadata` to ensure the player is ready before adding chapters.
 - **Adding Chapters**: The chapters are added to the player with the `addChapters method`, which should be supported by the <fastpix-player> element.
@@ -1127,7 +997,6 @@ This simplifies adding chapters to the player, especially when dealing with larg
 
 <details>
 <summary><strong>Styling, colors, and CSS-variable reference (click to expand)</strong></summary>
-
 
 The `fastpix-player` provides extensive options to customize the player's appearance and behavior through CSS variables. These options allow you to tailor the look and feel of the player to match your application's branding and user experience preferences. Customize elements such as buttons, controls, and visual themes for complete flexibility in your video player integration.
 
@@ -1155,51 +1024,28 @@ The options mentioned below help customize the visibility of different UI contro
 #### Description:
 
 - `--controls` : Controls the visibility of all the controls in the player.
-
 - `--time-display` : Controls the visibility of the time display on the player.
-
 - `--volume-control`: Toggles the visibility of the volume control on desktop.
-
 - `--title` : Hides or shows the video title.
-
 - `--play-button-initialized` : Hides or shows the play button after the player is initialized.
-
 - `--forward-skip-button` : Controls the visibility of the forward skip button.
-
 - `--audio-track-button`: Controls the visibility of the audio track button.
-
 - `--cc-button`: Hides or shows the subtitle button.
-
 - `--backward-skip-button` : Controls the visibility of the backward skip button.
-
 - `--resolution-selector` : Hides or shows the resolution selector for video quality control.
-
 - `--playback-rate-button` : Hides or shows the playback rate button for adjusting video speed.
-
 - `--progress-bar` : Toggles the visibility of the progress bar.
-
 - `--progress-bar-invisible: 1`: hides the built-in progress bar visually while keeping hover thumbnails and click-to-seek active.
-
 - `--seekbar-bottom: 0px` : to pin the seekbar to the bottom edge of the player.
-
 - `--pip-button` : Controls the visibility of the Picture-in-Picture button.
-
 - `--full-screen-button` : Toggles the visibility of the fullscreen button.
-
 - `--volume-control-mobile` : Controls the visibility of the volume control on mobile devices.
-
 - `--initial-play-button` : Hides or shows the initial play button before the video starts playing.
-
 - `--middle-controls-mobile` : Toggles the visibility of the mobile middle controls.
-
 - `-loading-indicator`: Controls the visibility of the loading indicator.
-
 - `--left-controls-bottom-mobile` : Controls the visibility of the bottom-left controls on mobile devices.
-
 - `--bottom-right-controls-mobile` : Controls the visibility of the bottom-right controls on mobile devices.
-
 - `--bottom-right-controls`: Controls the visibility of the bottom-right controls on desktop devices.
-
 - `--left-controls-bottom`: Controls the visibility of the bottom-left controls on desktop devices.
 
 #### Hide/show specific controls:
@@ -1228,7 +1074,6 @@ fastpix-player {
  --seekbar-bottom: 10px;
 }
 ```
-
 
 ##### Hide Control sections:
 
@@ -1262,9 +1107,7 @@ fastpix-player {
 }
 ```
 
-
 Each of these features is designed to enhance both flexibility and user experience, providing complete control over video playback, appearance, and user interactions in FastPix-player.
-
 
 </details>
 
@@ -1279,9 +1122,7 @@ Add a playlist and navigate programmatically or with the default UI.
     { playbackId: 'playback-id-1', title: 'Intro', thumbnail: "https://via.placeholder.com/300x200/ffc107/000000?text=Episode+1"},
     { playbackId: 'playback-id-2', title: 'Deep Dive', thumbnail: "https://via.placeholder.com/300x200/ffc107/000000?text=Episode+2" token='playback-token' },
     { playbackId: 'playback-id-2', title: 'Deep Dive', thumbnail: "https://via.placeholder.com/300x200/ffc107/000000?text=Episode+3",drmToken:'drm-token' },
-
   ];
-
   const player = document.getElementById('player');
   player.addPlaylist(playlist);
 
@@ -1335,7 +1176,6 @@ For full details see `PLAYLIST_DEVELOPER_GUIDE.md`.
 
 <details>
 <summary><strong>Full custom-controls walkthrough - HTML, CSS, and JS (click to expand)</strong></summary>
-
 
 This section demonstrates how to build your own **custom player controls** on top of the FastPix Player while still leveraging the player’s built-in capabilities such as **scrubbing, hover thumbnail previews, keyboard interactions, and Chromecast support**.
 
@@ -1397,7 +1237,6 @@ fastpix-player.custom-seekbar {
                 disable-keyboard-controls
                 preload="auto"
             ></fastpix-player>
-
             <!-- Controls Overlay -->
             <div class="controls-overlay">
                 <!-- Top Controls -->
@@ -1413,7 +1252,6 @@ fastpix-player.custom-seekbar {
                                 <path d="M8 5v14l11-7z" />
                             </svg>
                         </button>
-
                         <!-- Mute/Unmute Button -->
                         <button 
                             class="control-btn" 
@@ -1425,7 +1263,6 @@ fastpix-player.custom-seekbar {
                                 <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
                             </svg>
                         </button>
-
                         <!-- Skip −10s / +10s (player.seekBackward / seekForward) -->
                         <button
                             class="control-btn"
@@ -1446,7 +1283,6 @@ fastpix-player.custom-seekbar {
                             <span style="font-size:11px;font-weight:600;line-height:1;">+10</span>
                         </button>
                     </div>
-
                     <!-- Fullscreen Button -->
                     <button 
                         class="fullscreen-btn" 
@@ -1461,7 +1297,6 @@ fastpix-player.custom-seekbar {
                         </svg>
                     </button>
                 </div>
-
                 <!-- Shorts-style progress bar (display-only, RAF-driven) -->
                 <div class="seekbar-shorts" id="seekbarShorts" aria-hidden="true">
                     <div class="seekbar-shorts-fill" id="seekbarShortsFill"></div>
@@ -1479,14 +1314,12 @@ fastpix-player.custom-seekbar {
             margin: 0;
             padding: 0;
         }
-
         html, body {
             height: 100%;
             overflow: hidden;
             font-family: system-ui, -apple-system, sans-serif;
             background: #000;
         }
-
         .player-container {
             position: relative;
             width: 100vw;
@@ -1496,7 +1329,6 @@ fastpix-player.custom-seekbar {
             align-items: center;
             background: #0a0a0a;
         }
-
         .player-wrapper {
             position: relative;
             width: min(100vw, 56.25vh);
@@ -1505,7 +1337,6 @@ fastpix-player.custom-seekbar {
             border-radius: 16px;
             overflow: hidden;
         }
-
         fastpix-player {
             width: 100%;
             height: 100%;
@@ -1520,7 +1351,6 @@ fastpix-player.custom-seekbar {
             --left-controls-bottom-mobile: none;
             --play-button-initialized: none;
         }
-
         .controls-overlay {
             position: absolute;
             top: 0;
@@ -1530,7 +1360,6 @@ fastpix-player.custom-seekbar {
             pointer-events: none;
             z-index: 10;
         }
-
         .top-controls {
             position: absolute;
             top: 24px;
@@ -1544,14 +1373,12 @@ fastpix-player.custom-seekbar {
             box-sizing: border-box;
             pointer-events: none;
         }
-
         .control-group {
             display: flex;
             align-items: center;
             gap: 8px;
             pointer-events: auto;
         }
-
         .control-btn {
             width: 40px;
             height: 40px;
@@ -1566,16 +1393,13 @@ fastpix-player.custom-seekbar {
             padding: 0;
             transition: background 0.2s;
         }
-
         .control-btn:hover {
             background: rgba(0, 0, 0, 0.6);
         }
-
         .control-btn svg {
             width: 20px;
             height: 20px;
         }
-
         .fullscreen-btn {
             width: 40px;
             height: 40px;
@@ -1591,16 +1415,13 @@ fastpix-player.custom-seekbar {
             transition: background 0.2s;
             pointer-events: auto;
         }
-
         .fullscreen-btn:hover {
             background: rgba(0, 0, 0, 0.6);
         }
-
         .fullscreen-btn svg {
             width: 18px;
             height: 18px;
         }
-
         /* Shorts-style progress bar: thin at bottom, display-only, accent fill */
         .seekbar-shorts {
             position: absolute;
@@ -1638,12 +1459,10 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
             const seekbarShorts = document.getElementById('seekbarShorts');
             const seekbarShortsFill = document.getElementById('seekbarShortsFill');
             const playerWrapper = document.querySelector('.player-wrapper');
-
             if (!player) {
                 console.error('Player element not found');
                 return;
             }
-
             // Wait for video element to be available
             const waitForVideo = () => {
                 if (player.video) {
@@ -1652,14 +1471,11 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                     setTimeout(waitForVideo, 100);
                 }
             };
-
             const setupControls = () => {
                 const video = player.video;
                 if (!video) return;
-
                 let isPlaying = false;
                 let isMuted = true; // Track mute state separately
-
                 // Update play/pause button icon
                 const updatePlayPauseIcon = () => {
                     const svg = playPauseBtn.querySelector('svg');
@@ -1674,7 +1490,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                         playPauseBtn.setAttribute('aria-label', 'Play');
                     }
                 };
-
                 // Update mute button icon - icon shows current state (muted = mute icon, unmuted = volume icon)
                 const updateMuteIcon = () => {
                     const svg = muteBtn.querySelector('svg');
@@ -1695,7 +1510,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                         muteBtn.setAttribute('aria-label', 'Mute');
                     }
                 };
-
                 // Play/Pause handler
                 playPauseBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -1712,7 +1526,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                         updatePlayPauseIcon();
                     }
                 });
-
                 // Mute/Unmute handler - icon shows what action will happen
                 muteBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -1734,7 +1547,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                     // Update icon immediately
                     updateMuteIcon();
                 });
-
                 // Skip back / forward (programmatic API on the custom element)
                 const SKIP_SECONDS = 10;
                 skipBackBtn.addEventListener('click', (e) => {
@@ -1745,7 +1557,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                     e.stopPropagation();
                     player.seekForward?.(SKIP_SECONDS);
                 });
-
                 // Fullscreen handler
                 fullscreenBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -1757,7 +1568,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                         doc.mozFullScreenElement ||
                         doc.msFullscreenElement
                     );
-
                     if (isFullscreen) {
                         if (doc.exitFullscreen) {
                             doc.exitFullscreen();
@@ -1780,7 +1590,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                         }
                     }
                 });
-
                 // Update fullscreen icon on change
                 const updateFullscreenIcon = () => {
                     const doc = document;
@@ -1794,29 +1603,24 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                     svg.style.transform = isFullscreen ? 'rotate(180deg)' : 'none';
                     fullscreenBtn.setAttribute('aria-label', isFullscreen ? 'Exit fullscreen' : 'Fullscreen');
                 };
-
                 ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(event => {
                     document.addEventListener(event, updateFullscreenIcon);
                 });
-
                 // Listen to video events
                 video.addEventListener('play', () => {
                     isPlaying = true;
                     updatePlayPauseIcon();
                 });
-
                 video.addEventListener('pause', () => {
                     isPlaying = false;
                     updatePlayPauseIcon();
                 });
-
                 // Listen to volume/mute changes to keep icon in sync
                 video.addEventListener('volumechange', () => {
                     // Sync our tracked state with actual video state
                     isMuted = video.muted;
                     updateMuteIcon();
                 });
-
                 // --- Shorts-style progress bar (like ShortsApp): display-only, RAF-driven, accent color ---
                 let accentColor = '#5D09C7';
                 const readAccentColor = () => {
@@ -1831,7 +1635,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                 readAccentColor();
                 setTimeout(readAccentColor, 100);
                 seekbarShortsFill.style.background = accentColor;
-
                 const paintProgress = () => {
                     const duration = video.duration;
                     if (duration > 0 && isFinite(duration)) {
@@ -1841,7 +1644,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                         seekbarShortsFill.style.width = '0%';
                     }
                 };
-
                 let rafId = null;
                 const progressLoop = () => {
                     paintProgress();
@@ -1857,7 +1659,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                     }
                     paintProgress();
                 };
-
                 paintProgress();
                 video.addEventListener('play', startProgressRAF);
                 video.addEventListener('playing', startProgressRAF);
@@ -1865,14 +1666,12 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
                 video.addEventListener('ended', stopProgressRAF);
                 video.addEventListener('seeking', paintProgress);
                 video.addEventListener('seeked', paintProgress);
-
                 // Check initial state
                 isPlaying = !video.paused;
                 isMuted = video.muted; // Initialize from video element
                 updatePlayPauseIcon();
                 updateMuteIcon();
             };
-
             waitForVideo();
         }).catch(err => {
             console.error('Failed to load FastPix player:', err);
@@ -1897,7 +1696,6 @@ This example uses the **underlying `video`** for play/pause and progress (keeps 
     </script>
 ```
 
-
 Because the overlay is non-interactive (`pointer-events: none`), all hover and click events still go to the FastPix seekbar, so the built-in thumbnail hover previews (spritesheet or noThumbnail timestamp pill) keep working.
 
 ---
@@ -1911,7 +1709,6 @@ For a full **Shorts-style feed** in React 19 (multiple vertical shorts, scroll s
 You can reuse the HTML/CSS/script above in your own page or adapt the pattern from the React demo to get your own seekbar design while keeping FastPix thumbnail hover previews and seeking behavior.
 
 ---
-
 
 </details>
 
@@ -1928,7 +1725,7 @@ Browse every SDK and tool in the [FastPix organization](https://github.com/orgs/
 ## FAQ
 
 **How do I add an HLS video player to my website?**
-Install `@fastpix/fp-player`, then add a `<fastpix-player playback-id="...">` element. It plays HLS (`.m3u8`) with adaptive bitrate automatically. See [Installation](#installation) and [Basic Usage](#basic-usage).
+Install `@fastpix/fp-player`, then add a `<fastpix-player playback-id="...">` element. It plays HLS (`.m3u8`) with adaptive bitrate automatically. See [Install the player](#2-install-the-fastpix-web-player-and-vite) and [Usage](#usage).
 
 **How do I use the FastPix Player in React?**
 `<fastpix-player>` is a standard web component, so it works in React 18+ (including React 19) like any HTML element. For a complete Reels/Shorts-style feed, see the [React shorts demo](https://github.com/FastPix/fastpix-web-player-react-shorts-demo). To wire up your own buttons and seekbar, see [Build Custom Controls with FastPix](#build-custom-controls-with-fastpix-seekbar-playpause-muteunmute).
