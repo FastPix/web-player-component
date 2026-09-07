@@ -1722,7 +1722,10 @@ justify-content: center !important;
 
 .thumbnailSeeking {
    position: absolute;
-   z-index: 99;
+   /* Above the centre play button (inline z-index 1500, set in player.ts) and the
+      cart button (1600), so the seek preview is never painted over. Still below
+      the post-play overlay (2000) and the loading spinner (9999). */
+   z-index: 1700;
    bottom: calc(20px + var(--seekbar-bottom, 2.5rem));
    border-color: var(--primary-color);
    border-radius: 3px;

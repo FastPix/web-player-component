@@ -258,7 +258,8 @@ The token ensures authorized access, securing both on-demand and live-stream con
 - ## Seek and Load Options:
   - **Forward-Seek** and **Backward-Seek** are customizable options that allow users to define specific time intervals for skipping forward or backward, providing a tailored navigation experience.
   - **Thumbnail Seeking** is enabled by default and allows users to preview video frames by hovering or seeking over the timeline, enhancing navigation.
-  - **Preloading** options, such as `metadata`, ensure that video data is loaded in advance, reducing buffer times.
+  - **Preloading** options (`none`, `metadata`, `auto`) are passed to the underlying `<video>` element. Note that they apply only to the native-HLS path; to remove startup delay on a listing page, create the player before the click — see [Starting playback instantly](#starting-playback-instantly).
+
 - ## Poster customization:
   - Display a preview image at a specified time using the `thumbnail-time` attribute, set a custom `poster` image to show before the video begins playing, or use a `placeholder` to display a temporary image or background while the video is loading.
 - ## Auto detection of subtitles and audio tracks:
@@ -743,15 +744,55 @@ The `playback-rates` attribute defines a list of available playback speed option
 ```
 
 ### preload:
-The preload attribute in the <fastpix-player> element specifies how the player should preload the media content. It can take the following values:
 
-- `auto`: The player will preload the entire media file to ensure immediate playback without buffering.
-- `metadata`: Only the metadata (e.g., duration, dimensions) of the media file will be preloaded, without fetching the entire content.
-- `none`: The player will not preload the media and will only load the content when playback is initiated by the user.
+The `preload` attribute is forwarded to the underlying [`<video preload>`](https://developer.mozilla.org/docs/Web/HTML/Element/video#preload) element. It accepts `none`, `metadata` (default) and `auto`, and it tells the **browser** how much to fetch before playback begins.
+
+> **`preload` does not control buffering for HLS playback.** FastPix delivers HLS, which on most browsers is driven by hls.js. hls.js begins fetching the manifest and first segments as soon as the source is attached and never reads `video.preload`, so the attribute has no effect there. It is honoured only on the native-HLS path (iOS Safari), where the browser loads the stream itself.
+>
+> `preload` also cannot help before the player exists. Loading starts when `<fastpix-player>` is added to the DOM, so an attribute on an element you have not created yet does nothing. If you are trying to remove the startup delay when a user opens a video, see [Starting playback instantly](#starting-playback-instantly) below.
+
+| Value | Effect |
+| --- | --- |
+| `none` | Native-HLS path: nothing is fetched until playback starts. hls.js path: no effect. |
+| `metadata` | Native-HLS path: only enough is fetched to read duration, dimensions and tracks. hls.js path: no effect. **Default** — also used when the attribute is absent or set to an unrecognized value. |
+| `auto` | Native-HLS path: the browser may fetch ahead for faster startup. hls.js path: no effect. |
 
 ```html
-<fastpix-player preload="auto" playback-id="your-playback-id" ></fastpix-player>
+<fastpix-player preload="metadata" playback-id="your-playback-id" ></fastpix-player>
 ```
+
+#### Starting playback instantly
+
+On a listing page (a course with lessons, a video grid, a feed), a click typically shows a loader for a second or two. That is the manifest fetch, the token check and the first segments — all of it happening *after* the click, because the player was created by the click.
+
+The player starts loading the moment it is added to the DOM, so create the element before the click and the click only has to call `play()`:
+
+```js
+// on hover, or when the row scrolls into view
+const player = document.createElement("fastpix-player");
+player.setAttribute("playback-id", lesson.playbackId);
+player.setAttribute("token", lesson.token);        // for private playback
+player.setAttribute("stream-type", "on-demand");
+tile.appendChild(player);                          // loading starts here
+```
+
+Set every attribute *before* appending, and create the player inside the element it will play in — moving a player in the DOM tears it down and discards what it has buffered.
+
+Warming a player lets it buffer normally (up to ~2 minutes), which is wasteful on a long list. Cap it, and release the cap when the video is actually opened:
+
+```js
+player.hls.config.maxBufferLength = 10;   // buffer ~10s, then hold
+// ...once ~10s is buffered:
+player.hls.stopLoad();
+
+// when the user opens the lesson:
+player.hls.config.maxBufferLength = 30;
+player.hls.startLoad();
+```
+
+`player.hls` is absent on the native-HLS path (iOS Safari); there the browser manages the buffer and no cap is applied.
+
+See [`demo/course-page-instant-play.html`](demo/course-page-instant-play.html) for a runnable comparison of creating the player on click, on hover, and on page load, with the measured time-to-first-frame for each.
 
 ### start-time:
 The `start-time` attribute allows specifying the initial playback position in seconds when the video starts.
@@ -855,6 +896,14 @@ The `thumbnail-time` attribute in <fastpix-player> allows you to specify a parti
 
 ```html
 <fastpix-player playback-id="playback-id" thumbnail-time={8}></fastpix-player>
+```
+
+### thumbnail-token:
+
+Optional. Signs the poster and hover-preview requests when your media is private. If omitted, the playback `token` is used, so most integrations do not need to set this — provide it only when your image requests are signed with a different token than playback.
+
+```html
+<fastpix-player playback-id="playback-id" token="playback-token" thumbnail-token="image-token"></fastpix-player>
 ```
 
 ### spritesheet-src:

@@ -665,6 +665,12 @@ function receiveAttributes(context: any) {
 
   context.token = context.getAttribute("token");
   context.drmToken = context.getAttribute("drm-token");
+  // Poster and spritesheet requests need credentials of their own on private
+  // playback. `thumbnail-token` allows a separate image token; otherwise the
+  // playback token is reused. Without this the poster URL went out unsigned,
+  // returned 401, and the player showed no poster at all on private media.
+  context.thumbnailToken =
+    context.getAttribute("thumbnail-token") ?? context.token;
   context.playbackId = context.getAttribute("playback-id");
 
   // New: optional default playback for playlists
@@ -690,9 +696,12 @@ function receiveAttributes(context: any) {
   context.thumbnailTime =
     context.getAttribute("thumbnail-time") ?? context.startTimeAttribute;
   context.getThumbnailAttribute = context.getAttribute("thumbnail-time");
-  context.thumbnailTimeAttribute =
-    Number.parseFloat(context.getThumbnailAttribute) ||
-    Number.parseFloat(context.thumbnailTime);
+  // `||` treated a legitimate thumbnail-time="0" as missing and fell through
+  // to NaN, producing `?time=NaN` on the poster URL.
+  const parsedThumbnailTime = Number.parseFloat(context.getThumbnailAttribute);
+  context.thumbnailTimeAttribute = Number.isFinite(parsedThumbnailTime)
+    ? parsedThumbnailTime
+    : Number.parseFloat(context.thumbnailTime);
   context.posterAttribute = context.getAttribute("poster");
   context.placeholderAttribute = context.getAttribute("placeholder");
   context.thumbnailUrlAttribute = context.getAttribute("spritesheet-src");

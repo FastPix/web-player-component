@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.22]
+
+### Poster & hover preview fixes for private (token-signed) playback
+
+Image endpoints were being requested without the token that manifest requests already carried, so on private media the poster never appeared and seekbar hover previews flashed in and out before settling on a bare timestamp. Public playback was unaffected, which is why this went unnoticed.
+
+- **Poster now loads on private media** – `context.thumbnailToken` was read when building the poster URL but never assigned anywhere, so the request always went out unsigned and returned `401`. It is now populated from a new optional `thumbnail-token` attribute, falling back to the playback `token`. This also makes `thumbnail-time` take effect on private playback, where it previously appeared to do nothing.
+- **Poster failures are no longer silent** – the poster was applied only from the image's `onload`, with no `onerror`, so a rejected request produced a player with no poster and no diagnostic. Failures now warn.
+- **`thumbnail-time="0"` is honoured** – the attribute was parsed with `||`, so a legitimate `0` was treated as absent and fell through to `NaN`, sending `?time=NaN`.
+- **Spritesheet image URL now carries the token** – `fetchThumbnailJson` requested the JSON with `?token=`, then rebuilt the `.jpg` URL from scratch with only `?interval=`. On private playback the sheet returned `401`, the `<img>` errored, and previews silently degraded to timestamp-only. The image now receives the same credentials as the JSON.
+- **Hover listeners are attached once** – the spritesheet failure path called `attachProgressBarListeners` a second time without removing the first, so every pointer move ran two handlers over the same pill: one painting the frame, one rendering timestamp-only. This was the visible flicker. The handler now reads a mutable `context.thumbnailPreview`, so a sheet that fails or arrives late updates that single object instead of adding a second listener. `thumbnailSeeking()` re-runs on every `canplay` and no longer stacks listeners on repeat runs.
+- **Frames are promised only once the sheet loads** – the pill was sized for frames up front, then collapsed to a timestamp when the image failed, producing a preview that appeared and vanished. It now starts as timestamp-only and upgrades when the image is confirmed loadable; sheets already proven to load are remembered so later runs do not flicker back.
+- **`202 Accepted` is no longer fatal** – while an advanced spritesheet is still being generated server-side the image endpoint answers `202` with a JSON body, which an `<img>` reports as a load error and which permanently disabled frame previews. The sheet is now polled with backoff (1s → 15s) and the preview upgrades itself once the sheet lands.
+- **The final tile is reachable** – `findCurrentTile` iterated to `tiles.length - 1`, so the last tile never matched and the tail of the seekbar kept showing whichever frame was drawn previously.
+- **Preview no longer disappears at the ends of the seekbar** – a hovered time past `duration` (which happens on sub-pixel rounding, and while dragging the scrubber beyond either end) was treated as invalid and hid the pill mid-drag. The time is clamped to `[0, duration]` instead.
+- **Preview follows the cursor while seeking** – the hovered time was overridden with `video.currentTime` whenever the player was seeking or under-buffered, so the frame jumped away from the pointer for a moment after every click on the seekbar. Frames come from the spritesheet, not the decoded video, so the hovered time is always used.
+- **The pill is not rebuilt mid-hover** – `setupThumbnailElements` tore down the pill's children and re-appended its container on every run, including the `canplay` that follows a seek. It is now idempotent.
+
 ## [1.0.21]
 
 ### TypeScript declarations & SSR support

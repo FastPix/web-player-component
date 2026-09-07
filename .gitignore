@@ -12,3 +12,6 @@ docs/
 
 fastpix-nextjs-demo/
 fastpix-web-player-react-shorts-demo/
+
+# Local demo / test pages (may contain signed playback tokens)
+example/

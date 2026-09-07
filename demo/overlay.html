@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Premium-content overlay — FastPix Player</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/@fastpix/fp-player@latest"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 0 20px;
+      color: #111;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .hint {
+      font-size: 14px;
+      color: #444;
+      line-height: 1.55;
+      margin-bottom: 14px;
+    }
+
+    .hint code {
+      font-size: 12px;
+      background: #f4f4f5;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────────────
+       The overlay is a LIGHT-DOM child of <fastpix-player> assigned to a named
+       slot, so it composes INSIDE the player and keeps working in fullscreen.
+       No player source is modified — only the two documented custom properties
+       below, plus styling of our own element.
+
+       --user-slot-z          lifts the slot layer above the control bar (~1600).
+       --user-slot-bottom-clearance  is the gap the slot grid reserves for the
+                              controls; a full-bleed overlay wants none.
+       ────────────────────────────────────────────────────────────────────────── */
+    fastpix-player {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      display: block;
+      background: #000;
+      --user-slot-z: 1700;
+      --user-slot-bottom-clearance: 0px;
+    }
+
+    /* Slotted regions are grid cells, but `.fastpix-user-slots` (their parent) is
+       `position:absolute; inset:0`. Absolute positioning therefore resolves against
+       the whole player, which is how one slotted child covers the full frame. */
+    .paywall {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 24px;
+      box-sizing: border-box;
+      text-align: center;
+      /* Warm tint over whatever frame is behind, so the artwork still reads through
+         without competing with the copy. The second layer darkens the top and bottom
+         edges slightly, which keeps the close button and the log-in line legible over
+         a bright frame. */
+      background:
+        linear-gradient(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0) 30% 70%, rgba(0, 0, 0, 0.16)),
+        linear-gradient(rgba(122, 30, 22, 0.88), rgba(122, 30, 22, 0.88));
+      color: #fff;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .paywall__close {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      width: 26px;
+      height: 26px;
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: #fff;
+      opacity: 0.9;
+      cursor: pointer;
+      font: 300 24px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .paywall__close:hover {
+      opacity: 1;
+    }
+
+    .paywall__play {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.85);
+      display: grid;
+      place-items: center;
+      margin-bottom: 2px;
+    }
+
+    .paywall__play svg {
+      width: 18px;
+      height: 18px;
+      margin-left: 3px;
+      fill: #fff;
+    }
+
+    .paywall__title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(15px, 2.4cqw, 24px);
+      font-weight: 400;
+      margin: 0;
+      letter-spacing: 0.2px;
+    }
+
+    .paywall__sub {
+      font-size: clamp(10px, 1.35cqw, 14px);
+      margin: -6px 0 4px;
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    .paywall__actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .paywall__btn {
+      border: 0;
+      cursor: pointer;
+      color: #fff;
+      font-size: clamp(9px, 1.05cqw, 12px);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 12px 20px;
+      line-height: 1.15;
+    }
+
+    .paywall__btn--member {
+      background: #b45a63;
+    }
+
+    .paywall__btn--member:hover {
+      background: #c26670;
+    }
+
+    .paywall__btn--buy {
+      background: #2f7a75;
+    }
+
+    .paywall__btn--buy:hover {
+      background: #368a84;
+    }
+
+    .paywall__login {
+      font-size: clamp(9px, 1.1cqw, 12.5px);
+      margin: 2px 0 0;
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    .paywall__login a {
+      color: #fff;
+      text-decoration: underline;
+    }
+
+    /* The player exposes a `fp-player` container context, so the overlay scales
+       with the PLAYER rather than the viewport — it stays proportional in
+       fullscreen and in a small embed alike. */
+    @container fp-player (max-width: 420px) {
+      .paywall {
+        gap: 9px;
+        padding: 14px;
+      }
+
+      .paywall__play {
+        width: 38px;
+        height: 38px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Premium-content overlay</h1>
+  <p class="hint">
+    A paywall gate rendered <strong>inside</strong> the player through a named slot
+    (<code>slot="top-left"</code>), stretched to the full frame. Because it is slotted rather than
+    layered over the element from the page, it survives <strong>fullscreen</strong> and scales with
+    the player. Nothing in <code>src/</code> is touched.
+  </p>
+
+  <fastpix-player id="player" playback-id="2125094c-db43-4748-90e1-18539f2ccf98" preload="auto">
+    <!-- One element per slot, per the slots guide; everything else is nested inside it. -->
+    <div class="paywall" slot="top-left" role="dialog" aria-modal="true"
+      aria-label="This video is premium content">
+      <button class="paywall__close" type="button" aria-label="Close">&times;</button>
+
+      <div class="paywall__play" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </div>
+
+      <p class="paywall__title">This video is premium content.</p>
+      <p class="paywall__sub">Become a member or purchase this project for access.</p>
+
+      <div class="paywall__actions">
+        <button class="paywall__btn paywall__btn--member" type="button">Become a member</button>
+        <button class="paywall__btn paywall__btn--buy" type="button">Purchase - $24.99</button>
+      </div>
+
+      <p class="paywall__login">
+        Already a member? <a href="#login">Click here to log in.</a>
+      </p>
+    </div>
+  </fastpix-player>
+
+  <script>
+    // Demo-only wiring. The overlay is ordinary light DOM, so it is queried and
+    // handled from the page exactly like any other element.
+    const paywall = document.querySelector(".paywall");
+
+    paywall.querySelector(".paywall__close").addEventListener("click", () => {
+      paywall.hidden = true;
+      paywall.style.display = "none";
+    });
+
+    paywall.querySelectorAll(".paywall__btn").forEach((btn) =>
+      btn.addEventListener("click", () => console.log("[demo] clicked:", btn.textContent.trim())),
+    );
+  </script>
+</body>
+
+</html>
