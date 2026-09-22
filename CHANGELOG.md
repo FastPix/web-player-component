@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.23]
+
+### FairPlay playback fix for Safari
+
+DRM playback failed on Safari with "A DRM (Digital Rights Management) error occurred. Please check your drm-token or token for the stream." The tokens were never the problem — no license or certificate request was sent at all. The same stream played correctly in Shaka and the hls.js demo.
+
+- **FairPlay no longer receives Widevine robustness values** – `drmSystemOptions` set `videoRobustness`/`audioRobustness` to `SW_SECURE_CRYPTO`, a Widevine-only string. hls.js has no per-key-system override and applies these options to every key system, so Safari's CDM rejected the `com.apple.fps` configuration and `requestMediaKeySystemAccess` failed before any network request was made. Robustness is now left empty when the browser exposes FairPlay, while Widevine keeps `SW_SECURE_CRYPTO` on Chromium. This is a follow-up to the 1.0.21 entry below, which moved robustness to the key hls.js actually reads and so made the mismatch take effect for the first time.
+- **The resulting error message was misleading** – the key-system failure surfaced as advice to check `drm-token`, pointing at credentials that had not yet been used.
+
 ## [1.0.22]
 
 ### Poster & hover preview fixes for private (token-signed) playback

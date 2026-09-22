@@ -788,6 +788,12 @@ function receiveAttributes(context: any) {
     : null;
 }
 
+// Safari exposes the legacy FairPlay API; no other browser does. Used to decide
+// whether Widevine robustness values are safe to send to the CDM.
+function supportsFairPlay(): boolean {
+  return "WebKitMediaKeys" in globalThis;
+}
+
 function DrmSetup(context: any) {
   // Set up drmSystems config before creating Hls
   context.config.drmSystems["com.widevine.alpha"].licenseUrl =
@@ -796,6 +802,22 @@ function DrmSetup(context: any) {
     `https://api.fastpix.com/v1/on-demand/drm/license/fairplay/${context.playbackId}?token=${context.drmToken}`;
   context.config.drmSystems["com.apple.fps"].serverCertificateUrl =
     `https://api.fastpix.com/v1/on-demand/drm/cert/fairplay/${context.playbackId}?token=${context.drmToken}`;
+
+  // hls.js applies `drmSystemOptions` robustness to every key system; it has no
+  // per-key-system override. `SW_SECURE_CRYPTO` is a Widevine-only value, and
+  // Safari rejects it for "com.apple.fps", so requestMediaKeySystemAccess fails
+  // before any license or certificate request is made. Empty robustness is what
+  // FairPlay expects. Mutate in place: hls.js holds this same nested object, and
+  // DrmSetup can run after the Hls instance was constructed.
+  if (supportsFairPlay()) {
+    const drmSystemOptions = (context.config.drmSystemOptions ??= {});
+    drmSystemOptions.videoRobustness = "";
+    drmSystemOptions.audioRobustness = "";
+  }
+
+  // Indirect ref: esbuild `drop: ["console"]` only strips direct console.* calls,
+  // so this DRM debug log survives the build.
+  globalThis.console?.log("drmSystems", context.config.drmSystems);
 }
 
 export {
