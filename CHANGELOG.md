@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.23]
 
+- Removed debug consoles
+  
+## [1.0.23]
+
 ### FairPlay playback fix for Safari
 
 DRM playback failed on Safari with "A DRM (Digital Rights Management) error occurred. Please check your drm-token or token for the stream." The tokens were never the problem — no license or certificate request was sent at all. The same stream played correctly in Shaka and the hls.js demo.
