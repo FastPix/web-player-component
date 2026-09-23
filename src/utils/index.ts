@@ -501,7 +501,7 @@ async function setStreamUrl(
     return null;
   }
 
-  globalSource = streamUrl;
+  Source = streamUrl;
 
   initializeStream(context, streamUrl, streamType);
   return streamUrl;
@@ -814,10 +814,6 @@ function DrmSetup(context: any) {
     drmSystemOptions.videoRobustness = "";
     drmSystemOptions.audioRobustness = "";
   }
-
-  // Indirect ref: esbuild `drop: ["console"]` only strips direct console.* calls,
-  // so this DRM debug log survives the build.
-  globalThis.console?.log("drmSystems", context.config.drmSystems);
 }
 
 export {
