@@ -714,6 +714,9 @@ function receiveAttributes(context: any) {
   context.useAdvancedSpritesheet = context.hasAttribute(
     "enable-advanced-spritesheet"
   );
+  context.disableThumbnailHoverPreviews =
+    context.hasAttribute("disable-thumbnail-hover-previews") &&
+    context.getAttribute("disable-thumbnail-hover-previews") !== "false";
   // Optional interval (seconds between tiles) for the advanced spritesheet.
   // The API supports 1–10s and defaults to 10 when omitted, so we only
   // forward the parameter if the user explicitly set it.

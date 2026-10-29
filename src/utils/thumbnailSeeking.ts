@@ -616,7 +616,11 @@ async function thumbnailSeeking(
   let cachedUrl = sessionStorage.getItem(cacheKey);
   let thumbnailJson;
 
-  if (cachedUrl) {
+  // disable-thumbnail-hover-previews: never request the spritesheet JSON or
+  // image. A null sheet falls through to the timestamp-only pill below.
+  if (context.disableThumbnailHoverPreviews) {
+    thumbnailJson = null;
+  } else if (cachedUrl) {
     thumbnailJson = await fetchThumbnailJson(context, playbackId, cachedUrl);
   } else {
     thumbnailJson = await fetchThumbnailJson(

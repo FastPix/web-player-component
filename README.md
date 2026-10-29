@@ -31,7 +31,7 @@ This SDK simplifies HLS video playback by offering a wide range of customization
 - ## Seek and Load Options:
 
   - **Forward-Seek** and **Backward-Seek** are customizable options that allow users to define specific time intervals for skipping forward or backward, providing a tailored navigation experience.
-  - **Thumbnail Seeking** is enabled by default and allows users to preview video frames by hovering or seeking over the timeline, enhancing navigation.
+  - **Thumbnail Seeking** is enabled by default and allows users to preview video frames by hovering or seeking over the timeline, enhancing navigation. Turn it off with the `disable-thumbnail-hover-previews` attribute to show only the timestamp, without fetching any spritesheet.
   - **Preloading** options (`none`, `metadata`, `auto`) are passed to the underlying `<video>` element. Note that they apply only to the native-HLS path; to remove startup delay on a listing page, create the player before the click — see [Starting playback instantly](#starting-playback-instantly).
 
 - ## Poster customization:
@@ -892,6 +892,32 @@ Sets the gap (in seconds) between consecutive tiles on the advanced spritesheet.
   advanced-spritesheet-interval="1"
 ></fastpix-player>
 ```
+
+### disable-thumbnail-hover-previews:
+
+Boolean attribute that turns off the frame previews shown when hovering or scrubbing the seekbar. Hover previews are **enabled by default**; add this attribute only when you want to turn them off.
+
+When the attribute is present:
+
+- **No spritesheet requests are made.** The player never fetches `spritesheet.json` / `spritesheet.jpg` (or `advanced-spritesheet.json` / `.jpg`), so no image bandwidth is spent on previews.
+- **The seekbar still shows a hover pill** with the timestamp under the pointer, plus the chapter title when chapters are set. Only the video frame is left out.
+- **`enable-advanced-spritesheet` and `advanced-spritesheet-interval` have no effect**, since no spritesheet is loaded.
+- **The poster is unaffected.** `thumbnail.jpg`, `poster`, `placeholder` and `thumbnail-time` work as usual.
+
+Useful when your assets have no spritesheet generated, when image requests would fail (e.g. private media without a valid `thumbnail-token`), or to keep the timeline minimal and save bandwidth.
+
+```html
+<!-- Timestamp-only hover on the seekbar -->
+<fastpix-player playback-id="playback-id" disable-thumbnail-hover-previews></fastpix-player>
+```
+
+Setting the value to `"false"` keeps previews enabled, which is handy when the attribute is bound from a framework:
+
+```html
+<fastpix-player playback-id="playback-id" disable-thumbnail-hover-previews="false"></fastpix-player>
+```
+
+The attribute is read once, when `<fastpix-player>` is added to the page. Set it in the markup (or before appending the element); changing it on an element that is already on the page has no effect.
 
 ## Keyboard Navigation and Accessibility:
 Customize keyboard shortcuts with `hot-keys` for efficient video control and use `disable-keyboard-controls` to disable keyboard interactions for enhanced accessibility or specific use cases.

@@ -33,6 +33,60 @@ export function startFragPrefetchForStreamType(
   return streamType === "on-demand";
 }
 
+// Strongest first. Hardware-secure levels (Widevine L1) keep decoded frames out
+// of reach of screen-capture tools such as Loom, which record black instead.
+// SW_SECURE_CRYPTO stays as the last resort so devices that only have L3
+// (e.g. desktop Chrome on macOS/Linux) keep playing exactly as before.
+const WIDEVINE_VIDEO_ROBUSTNESS_LEVELS = [
+  "HW_SECURE_ALL",
+  "HW_SECURE_DECODE",
+  "HW_SECURE_CRYPTO",
+  "SW_SECURE_DECODE",
+  "SW_SECURE_CRYPTO",
+];
+
+/**
+ * hls.js `requestMediaKeySystemAccessFunc`: asks Widevine for the strongest
+ * video robustness the device supports. Other key systems (FairPlay) are passed
+ * through untouched, since Widevine robustness strings are invalid for them.
+ */
+async function requestMediaKeySystemAccessWithBestRobustness(
+  keySystem: string,
+  configs: MediaKeySystemConfiguration[]
+): Promise<MediaKeySystemAccess> {
+  if (!navigator.requestMediaKeySystemAccess) {
+    throw new Error(
+      `navigator.requestMediaKeySystemAccess is not available (protocol ${location.protocol})`
+    );
+  }
+  if (keySystem !== "com.widevine.alpha") {
+    return navigator.requestMediaKeySystemAccess(keySystem, configs);
+  }
+
+  let lastError: unknown;
+  for (const robustness of WIDEVINE_VIDEO_ROBUSTNESS_LEVELS) {
+    const candidates = configs.map((config) => ({
+      ...config,
+      videoCapabilities: (config.videoCapabilities ?? []).map((capability) => ({
+        ...capability,
+        robustness,
+      })),
+    }));
+    try {
+      const access = await navigator.requestMediaKeySystemAccess(
+        keySystem,
+        candidates
+      );
+      // Indirect ref so the build's `drop: ["console"]` keeps this log.
+      globalThis.console?.log("Widevine video robustness:", robustness);
+      return access;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError ?? new Error("No supported Widevine robustness level");
+}
+
 const configHls: Partial<HlsConfig> = {
   maxMaxBufferLength: 120,
   autoStartLoad: true,
@@ -65,6 +119,8 @@ const configHls: Partial<HlsConfig> = {
     videoRobustness: "SW_SECURE_CRYPTO",
     audioRobustness: "SW_SECURE_CRYPTO",
   },
+  requestMediaKeySystemAccessFunc:
+    requestMediaKeySystemAccessWithBestRobustness as HlsConfig["requestMediaKeySystemAccessFunc"],
 };
 
 const hlsInstance: HlsInstanceType | null = null;
