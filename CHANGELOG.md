@@ -6,9 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Stronger Widevine protection & option to disable hover previews
 
-- **Widevine now requests the strongest robustness the device supports** – video robustness was fixed at `SW_SECURE_CRYPTO`, the weakest Widevine level, even on devices with hardware-backed DRM. The player now tries `HW_SECURE_ALL` → `HW_SECURE_DECODE` → `HW_SECURE_CRYPTO` → `SW_SECURE_DECODE` → `SW_SECURE_CRYPTO` and uses the first one the browser grants. On hardware-secure devices (Widevine L1, e.g. Chrome/Edge on supported Windows hardware and most Android devices) decoded frames stay in protected memory, so screen-recording tools such as Loom and Jam capture a black video. Devices that only support software DRM (e.g. Chrome on macOS and Linux) fall back to a software level and keep playing; screen capture cannot be blocked there from the player. Audio robustness stays at `SW_SECURE_CRYPTO`. FairPlay (Safari) is passed through unchanged, so the 1.0.23 fix still applies. The chosen level is logged to the console as `Widevine video robustness: <level>`.
-- **New `disable-thumbnail-hover-previews` attribute** – turns off frame previews on the seekbar. When present, the spritesheet JSON and image are never requested and hovering shows only the timestamp (and chapter title, if any). Previews remain enabled by default, and `disable-thumbnail-hover-previews="false"` keeps them on. The poster is unaffected. The attribute is included in the bundled TypeScript/JSX types.
-  
+- **Stronger Widevine DRM** – the player now uses hardware-level protection when the device supports it, so screen recorders such as Loom capture a black video. Devices without it keep playing as before.
+- **New `disable-thumbnail-hover-previews` attribute** – shows only the timestamp when hovering the seekbar, without loading preview images. Previews stay on by default.
+- Removed debug console logs.
+
 ## [1.0.23]
 
 ### FairPlay playback fix for Safari

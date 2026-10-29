@@ -501,7 +501,7 @@ async function setStreamUrl(
     return null;
   }
 
-  Source = streamUrl;
+  globalSource = streamUrl;
 
   initializeStream(context, streamUrl, streamType);
   return streamUrl;
