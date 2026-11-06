@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>In-video quizzes — FastPix Player</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/@fastpix/fp-player@latest"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 0 20px;
+      color: #111;
+    }
+
+    h1 { font-size: 1.25rem; font-weight: 600; margin-bottom: 8px; }
+
+    .hint { font-size: 14px; color: #444; line-height: 1.55; margin-bottom: 14px; }
+
+    .hint code {
+      font-size: 12px; background: #f4f4f5; padding: 1px 5px; border-radius: 4px;
+    }
+
+    /* Same no-source-changes technique as overlay.html: a light-DOM child assigned
+       to a named slot composes INSIDE the player, so the quiz survives fullscreen.
+       Only the two documented custom properties are set. */
+    fastpix-player {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      display: block;
+      background: #000;
+      --user-slot-z: 1700;
+      --user-slot-bottom-clearance: 0px;
+    }
+
+    /* `.fastpix-user-slots` is absolute/inset:0, so an absolutely positioned slotted
+       child covers the whole frame regardless of which corner region it is assigned to. */
+    .quiz {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      box-sizing: border-box;
+      background: rgba(9, 11, 16, 0.72);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      color: #fff;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .quiz[hidden] { display: none; }
+
+    .quiz__card {
+      width: min(560px, 100%);
+      max-height: 100%;
+      overflow: auto;
+      background: #14161d;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: clamp(12px, 2.2cqw, 22px);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+    }
+
+    .quiz__meta {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 10px;
+      font-size: clamp(9px, 1.05cqw, 11px);
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.55);
+    }
+
+    .quiz__dots { display: flex; gap: 5px; }
+
+    .quiz__dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.25);
+    }
+    .quiz__dot--done { background: #34d399; }
+    .quiz__dot--wrong { background: #f87171; }
+    .quiz__dot--current { background: #fff; }
+
+    .quiz__q {
+      font-size: clamp(13px, 1.85cqw, 19px);
+      line-height: 1.35; margin: 0 0 14px; font-weight: 600;
+    }
+
+    .quiz__options { display: grid; gap: 8px; }
+
+    .quiz__opt {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; text-align: left; cursor: pointer;
+      padding: clamp(8px, 1.2cqw, 12px) 14px;
+      font-size: clamp(11px, 1.35cqw, 14px);
+      color: #fff;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      font-family: inherit;
+    }
+
+    .quiz__opt:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+    .quiz__opt:disabled { cursor: default; }
+
+    .quiz__opt-key {
+      flex: none;
+      width: 22px; height: 22px; border-radius: 5px;
+      display: grid; place-items: center;
+      font-size: 11px; font-weight: 700;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .quiz__opt--correct {
+      background: rgba(52, 211, 153, 0.16);
+      border-color: rgba(52, 211, 153, 0.65);
+    }
+    .quiz__opt--correct .quiz__opt-key { background: #34d399; color: #06281d; }
+
+    .quiz__opt--wrong {
+      background: rgba(248, 113, 113, 0.14);
+      border-color: rgba(248, 113, 113, 0.6);
+    }
+    .quiz__opt--wrong .quiz__opt-key { background: #f87171; color: #2b0a0a; }
+
+    .quiz__feedback {
+      margin: 12px 0 0;
+      font-size: clamp(10px, 1.25cqw, 13px);
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.82);
+    }
+
+    .quiz__foot { display: flex; justify-content: flex-end; margin-top: 14px; }
+
+    .quiz__next {
+      border: 0; border-radius: 7px; cursor: pointer;
+      background: #fff; color: #111;
+      font-weight: 650; font-family: inherit;
+      font-size: clamp(10px, 1.2cqw, 13px);
+      padding: clamp(8px, 1.1cqw, 11px) clamp(14px, 1.8cqw, 20px);
+    }
+
+    .quiz__next:hover { background: #e9e9ee; }
+
+    .quiz__score { font-size: clamp(12px, 1.6cqw, 16px); margin: 0 0 6px; }
+  </style>
+</head>
+
+<body>
+  <h1>In-video quizzes</h1>
+  <p class="hint">
+    Questions fire at cue points, pause playback, and block the controls until answered.
+    Driven entirely from this page using events the player already forwards
+    (<code>timeupdate</code>, <code>ended</code>) and its public
+    <code>play()</code> / <code>pause()</code> / <code>currentTime</code> API —
+    nothing in <code>src/</code> is modified. While a question is open the player's keyboard
+    shortcuts are suppressed as well, and <kbd>A</kbd>–<kbd>D</kbd> pick an answer.
+  </p>
+
+  <fastpix-player id="player" playback-id="your-playback-id" preload="auto">
+    <div class="quiz" slot="top-left" role="dialog" aria-modal="true" aria-labelledby="quiz-q" hidden>
+      <div class="quiz__card">
+        <div class="quiz__meta">
+          <span id="quiz-step">Question 1 of 3</span>
+          <span class="quiz__dots" id="quiz-dots" aria-hidden="true"></span>
+        </div>
+        <p class="quiz__q" id="quiz-q"></p>
+        <div class="quiz__options" id="quiz-options"></div>
+        <p class="quiz__feedback" id="quiz-feedback" hidden></p>
+        <div class="quiz__foot">
+          <button class="quiz__next" id="quiz-next" type="button" hidden>Continue</button>
+        </div>
+      </div>
+    </div>
+  </fastpix-player>
+
+  <script>
+
+    const player = document.getElementById("player");
+
+    // Each CHECKPOINT is a cue point holding a SET of questions, asked in sequence.
+    // One question per checkpoint is just a set of length 1, so the simple case is
+    // unchanged — this only adds the ability to group several at the same timestamp.
+    const CHECKPOINTS = [
+      {
+        at: 8,
+        questions: [
+          {
+            q: "What does a cue point do in this demo?",
+            options: ["Mutes the player", "Pauses playback and asks a question", "Changes quality", "Skips the intro"],
+            answer: 1,
+            why: "Crossing a cue pauses the video and opens the checkpoint. Playback resumes only after every question in it is answered.",
+          },
+          {
+            q: "How many questions can one cue point hold?",
+            options: ["Exactly one", "As many as you list", "Two at most", "One per platform"],
+            answer: 1,
+            why: "A checkpoint owns an array of questions; they are asked one after another before playback continues.",
+          },
+        ],
+      },
+      {
+        at: 20,
+        questions: [
+          {
+            q: "Where does this quiz overlay actually live?",
+            options: ["In the player's source", "In a browser extension", "In a named slot inside the player", "In an iframe"],
+            answer: 2,
+            why: "It is a light-DOM child assigned to a slot, so it composes inside the player and keeps working in fullscreen.",
+          },
+          {
+            q: "Which player API drives the pause and resume?",
+            options: ["Only CSS", "play() and pause() on the element", "A private internal method", "The HLS manager"],
+            answer: 1,
+            why: "The element exposes play(), pause(), currentTime and duration publicly, so the page needs nothing internal.",
+          },
+          {
+            q: "Which events does the page listen to?",
+            options: ["timeupdate and ended", "click only", "scroll and resize", "none — it polls"],
+            answer: 0,
+            why: "The player forwards the media events from its internal <video>, so timeupdate drives the cue check and ended shows the results.",
+          },
+        ],
+      },
+      {
+        at: 34,
+        questions: [
+          {
+            q: "Why can't you scrub past an open question?",
+            options: [
+              "Seeking is disabled globally",
+              "The overlay covers the controls, and any missed cue fires immediately",
+              "The video is downloaded first",
+              "The player blocks all input",
+            ],
+            answer: 1,
+            why: "The overlay sits above the control bar, and the cue check picks the earliest checkpoint with unanswered questions at or before the current time.",
+          },
+        ],
+      },
+    ];
+
+    // Flatten to a single ordered list so progress, scoring and the dots stay simple.
+    const FLAT = CHECKPOINTS.flatMap((cp, ci) => cp.questions.map((question, qi) => ({ ci, qi, question })));
+    const keyOf = (ci, qi) => `${ci}.${qi}`;
+
+    const el = {
+      root: document.querySelector(".quiz"),
+      step: document.getElementById("quiz-step"),
+      dots: document.getElementById("quiz-dots"),
+      q: document.getElementById("quiz-q"),
+      options: document.getElementById("quiz-options"),
+      feedback: document.getElementById("quiz-feedback"),
+      next: document.getElementById("quiz-next"),
+    };
+
+    const state = { active: null, answered: new Map(), score: 0 };
+    const KEYS = ["A", "B", "C", "D", "E"];
+
+    function renderDots() {
+      el.dots.innerHTML = "";
+      FLAT.forEach(({ ci, qi }) => {
+        const dot = document.createElement("span");
+        const result = state.answered.get(keyOf(ci, qi));
+        const isCurrent = state.active && state.active.ci === ci && state.active.qi === qi;
+        // A result outranks "current": once answered, the dot must keep showing right/wrong.
+        // Adding both classes would let --current win on CSS order and hide the outcome.
+        dot.className =
+          "quiz__dot" +
+          (result === true
+            ? " quiz__dot--done"
+            : result === false
+              ? " quiz__dot--wrong"
+              : isCurrent
+                ? " quiz__dot--current"
+                : "");
+        el.dots.appendChild(dot);
+      });
+    }
+
+    /** The next unanswered question inside a checkpoint, or null when the set is complete. */
+    function nextInCheckpoint(ci) {
+      const qi = CHECKPOINTS[ci].questions.findIndex((_, i) => !state.answered.has(keyOf(ci, i)));
+      return qi === -1 ? null : qi;
+    }
+
+    function openQuestion(ci, qi) {
+      const { question } = FLAT.find((f) => f.ci === ci && f.qi === qi);
+      state.active = { ci, qi };
+      player.pause(); // a checkpoint is a hard stop, not an overlay you can play behind
+
+      const setSize = CHECKPOINTS[ci].questions.length;
+      el.step.textContent =
+        setSize > 1
+          ? `Checkpoint ${ci + 1} · Question ${qi + 1} of ${setSize}`
+          : `Checkpoint ${ci + 1} of ${CHECKPOINTS.length}`;
+      el.q.textContent = question.q;
+      el.feedback.hidden = true;
+      el.next.hidden = true;
+      el.options.innerHTML = "";
+      renderDots();
+
+      question.options.forEach((label, i) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "quiz__opt";
+        btn.innerHTML = `<span class="quiz__opt-key">${KEYS[i]}</span><span>${label}</span>`;
+        btn.addEventListener("click", () => answer(ci, qi, i));
+        el.options.appendChild(btn);
+      });
+
+      el.root.hidden = false;
+      el.options.querySelector("button")?.focus();
+    }
+
+    function answer(ci, qi, chosen) {
+      const { question } = FLAT.find((f) => f.ci === ci && f.qi === qi);
+      const correct = chosen === question.answer;
+      if (!state.answered.has(keyOf(ci, qi))) {
+        state.answered.set(keyOf(ci, qi), correct);
+        if (correct) state.score += 1;
+      }
+
+      // Lock the choices and mark the right answer as well as the wrong pick, so a
+      // learner sees WHAT was right — not just that they missed it.
+      [...el.options.children].forEach((btn, i) => {
+        btn.disabled = true;
+        if (i === question.answer) btn.classList.add("quiz__opt--correct");
+        else if (i === chosen) btn.classList.add("quiz__opt--wrong");
+      });
+
+      el.feedback.textContent = (correct ? "Correct. " : "Not quite. ") + question.why;
+      el.feedback.hidden = false;
+
+      // Stay inside the checkpoint until its whole set is done; only then resume.
+      const remaining = nextInCheckpoint(ci);
+      el.next.textContent = remaining !== null ? "Next question" : "Continue";
+      el.next.hidden = false;
+      el.next.focus();
+      renderDots();
+    }
+
+    el.next.addEventListener("click", () => {
+      const { ci } = state.active ?? {};
+      const remaining = ci === undefined ? null : nextInCheckpoint(ci);
+      if (remaining !== null) {
+        openQuestion(ci, remaining); // next question in the same checkpoint — stay paused
+        return;
+      }
+      el.root.hidden = true;
+      state.active = null;
+      renderDots();
+      player.play();
+    });
+
+    // Pick the EARLIEST checkpoint with unanswered questions at or before the current
+    // time. Using "at or before" rather than an exact crossing is what makes seeking
+    // safe: jump past a checkpoint and it opens immediately instead of being skipped.
+    player.addEventListener("timeupdate", () => {
+      if (state.active !== null || el.root.hidden === false) return;
+      const t = player.currentTime;
+      const ci = CHECKPOINTS.findIndex((cp, i) => t >= cp.at && nextInCheckpoint(i) !== null);
+      if (ci !== -1) openQuestion(ci, nextInCheckpoint(ci));
+    });
+
+    player.addEventListener("ended", () => {
+      state.active = null;
+      el.step.textContent = "Results";
+      el.q.textContent = `You scored ${state.score} of ${FLAT.length}.`;
+      el.options.innerHTML = "";
+      el.feedback.textContent =
+        state.answered.size < FLAT.length
+          ? "Some questions were never reached — seek back to pick them up."
+          : state.score === FLAT.length
+            ? "Full marks."
+            : "Review the explanations and try again.";
+      el.feedback.hidden = false;
+      el.next.hidden = true;
+      renderDots();
+      el.root.hidden = false;
+    });
+
+    // ── Keyboard gate ────────────────────────────────────────────────────────
+    // The overlay hides the control BAR, but the player also binds its shortcuts to
+    // `document`, so K / M / F / C and the arrows would still drive playback behind an
+    // open question. The public `disable-keyboard-controls` attribute cannot help: it is
+    // read once during setup (utils/index.ts) and decides whether the listener is ever
+    // attached, so flipping it at runtime does nothing.
+    //
+    // Instead we listen on `document` in the CAPTURE phase. The player's listener is a
+    // bubble-phase listener on the same node, and capture at the root runs first, so
+    // stopping propagation there means the player never sees the key. The player
+    // registers no capture-phase listeners, so nothing can outrun this.
+    const PLAYER_HOTKEYS = new Set([
+      "KeyK", "KeyM", "KeyF", "KeyC",
+      "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    ]);
+
+    document.addEventListener(
+      "keydown",
+      (event) => {
+        if (el.root.hidden) return; // quiz closed -> the player keeps every shortcut
+
+        // Answer with the letter keys the options already advertise (A, B, C, …).
+        const letter = KEYS.indexOf(event.key.toUpperCase());
+        if (letter !== -1 && state.active) {
+          const btn = el.options.children[letter];
+          if (btn && !btn.disabled) {
+            event.preventDefault();
+            btn.click();
+          }
+        }
+
+        // Swallow only the player's own keys. Enter / Space / Tab are deliberately left
+        // alone so the question stays operable by keyboard — stopping propagation for
+        // those would also stop the event reaching our own buttons.
+        if (PLAYER_HOTKEYS.has(event.code)) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      },
+      true, // capture
+    );
+
+
+    renderDots();
+
+  </script>
+</body>
+
+</html>
